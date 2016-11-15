@@ -16,9 +16,9 @@ Acknowledgment:
 import os
 import time
 import re
-import ast
 from datetime import datetime
 import praw
+import ast
 import pprint as pr
 
 ''' CONFIGS '''
@@ -43,7 +43,7 @@ replied_list = ['d9x043o']
 def login():
     ''' log connection '''
     print('Establishing connection...')
-    ''' praw4 need only the first 3 for read-only mode '''
+    ''' praw4 only needs the first 3 for read-only mode '''
     r = praw.Reddit(user_agent=ua, client_id=id, client_secret=secret, 
         username=username,
         password=password
@@ -54,11 +54,23 @@ def login():
 def test_break():
     userinput = input("Just testing, ctrl+c to interrupt.")
 
-def search_sub(subreddit, limit):
+def check_mentions():
+    '''
+    Bots can and should monitor https://www.reddit.com/message/mentions.json 
+    rather than polling/scraping every comment, whenever possible. 
+    You can also monitor /api/v1/me and check the has_mail attribute to see if 
+    you need to look up mentions.json
+    '''
+    pass
+
+def check_pm():
+    pass
+
+def search_query(subreddit, limit):
     r = login()
     search_result = r.subreddit(subreddit).search(
-        '{0}'.format(botname), time_filter='week')
-    print(search_result.__dict__)
+                                '{0}'.format(botname), time_filter='week')
+    # print(search_result.__dict__)
     # test_break()
 
     for thread in result:
@@ -113,7 +125,8 @@ def search_sub(subreddit, limit):
                     '''.format(comment.author, dt, userquery))
                     
                     ''' log this one as replied '''
-                    print('Logged id[{0}] from {1}'.format(comment.id, comment.author))
+                    print('Logged id[{0}] from {1}'.format(
+                                                    comment.id, comment.author))
                     replied_list.append(comment.id)
                     # print('Resuming after 60s...')
                     # time.sleep(60)
