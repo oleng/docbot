@@ -6,6 +6,7 @@
 #
 beautifulsoup4==4.5.1
 decorator==4.0.10         # via praw
+html2text==2016.9.19
 lxml==3.6.4
 praw==4.0.0b22
 prawcore==0.2.1           # via praw
