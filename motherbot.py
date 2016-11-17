@@ -6,18 +6,21 @@ version:    v.0.1
 git:   
 
 """
-import os
+import os   # for collecting local data
 import re
 import pprint as p
 import copy as cp
 from collections import OrderedDict
 from bs4 import BeautifulSoup as BS
 import html2text
+import simplejson
 
 ''' LOCAL TEST CONFIGS '''
 path = '~/Google Drive/docs/python-3.5.2_docs/library/'
 page = 'functions.html'
 fullpath = os.path.join(os.path.expanduser(path), page)
+dbpath = ''
+jsonpath = ''
 # descriptions = OrderedDict()
 
 def create_definitions(fullpath, datastore=None, **kwargs):
@@ -50,6 +53,7 @@ def create_definitions(fullpath, datastore=None, **kwargs):
         Get Python version from the page (set by js: var DOCUMENTATIONS_OPTIONS) 
         and use them for URL variables and other metadata
         """
+        ''' Initialize data sources '''
         datadump = {}
         meta = {}
         h = html2text.HTML2Text()
@@ -60,6 +64,7 @@ def create_definitions(fullpath, datastore=None, **kwargs):
         _sections = _doc.find_all('dl')
         _src = _doc.body.find(attrs={'class':'this-page-menu'})
         _var_opt = ''.join(_doc.head.script.contents)
+
         """ [ Metadata ] for hyperlinks """
         _version = re.search(r'VERSION.*\'([\d\.]+)\'', _var_opt)
         _suffix = re.search(r'SUFFIX.*\'(\.\w+)\'', _var_opt)
@@ -69,27 +74,26 @@ def create_definitions(fullpath, datastore=None, **kwargs):
         DOC_LONGVERSION =_version.group(1)
         DOC_VERSION = DOC_LONGVERSION[0]
         DOC_TOPIC = _part.group(1)
-        DOC_PART = _part.group(2)
+        DOC_SECTION = _part.group(2)
         DOC_SUFFIX = _suffix.group(1)
         DOC_VER_URL = '{}/{}/'.format(DOC_ROOT, DOC_VERSION)
-        DOC_PART_URL = '{}/{}/{}/'.format(DOC_ROOT, DOC_VERSION, DOC_TOPIC)
+        DOC_SECTION_URL = '{}/{}/{}/'.format(DOC_ROOT, DOC_VERSION, DOC_TOPIC)
         DOC_FULL_URL = '{}/{}/{}/{}{}'.format(
-                        DOC_ROOT, DOC_VERSION, DOC_TOPIC, DOC_PART, DOC_SUFFIX)
-
-        meta['version'] = DOC_VERSION
-        meta['version_full'] = DOC_LONGVERSION
-        meta['doc_topic'] = DOC_TOPIC
-        if DOC_TOPIC == DOC_ROOT and DOC_PART == 'glossary':
-            meta['doc_topic'] = 'glossary'
-        meta['doc_part'] = DOC_PART
+                    DOC_ROOT, DOC_VERSION, DOC_TOPIC, DOC_SECTION, DOC_SUFFIX)
+        if _part.group(1) == (DOC_ROOT or fullpath) and DOC_SECTION == 'glossary':
+            DOC_TOPIC = 'glossary'
 
         """ Setup json & database """
-        # use one json file per part/page, spread in directories named from 
-        # topics mirroring documentation structure
+        # for each major version create a directory, with subdirectories for 
+        # topics mirroring documentation structure, one json file per section. 
         # use one table for each topic in database
-        
-
         current_dir = os.getcwd()
+
+        def store_json(filename, directory, subdirectory):
+            """ Check if directory/files exists and create one if not """
+            # os.makedirs
+            pass
+            # return True 
         
         def internal_ref(arg):
             """ Replaces internal anchor refs and relative urls with abs path """
@@ -101,8 +105,8 @@ def create_definitions(fullpath, datastore=None, **kwargs):
                         return r'{}{}'.format(DOC_FULL_URL, match.group(1))
                     elif match.group(2):
                         # print('<re matched group 2!> : {}{}'
-                        #     .format(DOC_PART_URL, match.group(2)))
-                        return r'{}{}'.format(DOC_PART_URL, match.group(2))
+                        #     .format(DOC_SECTION_URL, match.group(2)))
+                        return r'{}{}'.format(DOC_SECTION_URL, match.group(2))
                     elif match.group(3):
                         strings = match.group(3)[
                                     (match.start(3)+3): match.end()
@@ -169,10 +173,9 @@ def create_definitions(fullpath, datastore=None, **kwargs):
             if internal_link is not False:
                 section.a['href'] = internal_link
                 # p.pprint(title_link.__dict__)
-            section_link = section.a['href']
-            # print('link:', section_link)
+            url = section.a['href']
+            # print('link:', url)
             # insert link for metadata
-            meta['url'] = section_link
             
             # < Hack > copy untouched section.dd first since we're destroying  
             # span & we still need to manipulate them in body (section.dd) later
@@ -195,9 +198,9 @@ def create_definitions(fullpath, datastore=None, **kwargs):
             # < Hack > around BS because making it output simple strings is like 
             # getting your money back from asshole you misjudged a long time ago
             transform_title = []
-            for x in title.contents:
-                # print('x:', x)
-                transform_title.append(str(x))
+            for content in section.dt.contents:
+                # print('content:', content)
+                transform_title.append(str(content))
             # Format title section
             title = '{0}{1}'.format(
                     markdown_header('h5'),
@@ -228,24 +231,29 @@ def create_definitions(fullpath, datastore=None, **kwargs):
 
             body = section.dd
             transform_body =[]
-            for x in body.contents:
+            for content in body.contents:
                 # print('x:', x)
-                transform_body.append(str(x))
+                transform_body.append(str(content))
             body = h.handle(''.join(transform_body).strip())
             # internal_link = internal_ref(link.a['href'])
             # print('body: ::: ', body)
 
             footer = apply_footer(DOC_FULL_URL)
-            ''' Store all the data '''
-            datadump.append(
-                {   'keyword': keyword, 
-                    'title': title, 
-                    'body': body, 
-                    'footer': footer,
-                    'metadata': meta    }
-            )
 
-            
+            ''' Store all the data '''
+            keyword_dict = { 
+                'topic': DOC_TOPIC,
+                'version': DOC_VERSION,
+                'version_full': DOC_LONGVERSION,
+                'topic': DOC_TOPIC,
+                'section': DOC_SECTION,
+                'title': title, 
+                'body': body, 
+                'footer': footer,
+                'url' : url,
+            }
+            datadump[keyword] = keyword_dict.copy()
+            store_json(keyword, keyword_dict['topic'], keyword_dict['section'])
             # with open()
         p.pprint(datadump)
 
