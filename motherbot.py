@@ -21,7 +21,7 @@ fullpath = os.path.join(os.path.expanduser(path), page)
 # descriptions = OrderedDict()
 
 def create_definitions(fullpath, datastore=None, **kwargs):
-    '''This is the main class to initialize the definitions data 
+    """ This is the main class to initialize the definitions data 
     Steps:
         1. extract definition informations from local documentation copy,
         2. convert the markup to markdown
@@ -44,14 +44,13 @@ def create_definitions(fullpath, datastore=None, **kwargs):
         - metadata: section link, h1 title
         join 3 parts to a single section
         store to database
-    ''' 
+    """
     def __init__():
-        '''
-        Get Python version from document page (set by js: 
-        var DOCUMENTATIONS_OPTIONS) and use them for variables to include in 
-        metadata
-        '''
-        datadump = []
+        """
+        Get Python version from the page (set by js: var DOCUMENTATIONS_OPTIONS) 
+        and use them for URL variables and other metadata
+        """
+        datadump = {}
         meta = {}
         h = html2text.HTML2Text()
         h.ignore_links = False
@@ -61,7 +60,7 @@ def create_definitions(fullpath, datastore=None, **kwargs):
         _sections = _doc.find_all('dl')
         _src = _doc.body.find(attrs={'class':'this-page-menu'})
         _var_opt = ''.join(_doc.head.script.contents)
-        ''' [ Metadata ] for hyperlinks '''
+        """ [ Metadata ] for hyperlinks """
         _version = re.search(r'VERSION.*\'([\d\.]+)\'', _var_opt)
         _suffix = re.search(r'SUFFIX.*\'(\.\w+)\'', _var_opt)
         _part = re.search(r'\.\./_sources/([\w]+)/([\w]+)\.*', str(_src))
@@ -69,22 +68,31 @@ def create_definitions(fullpath, datastore=None, **kwargs):
         DOC_ROOT = 'https://docs.python.org'
         DOC_LONGVERSION =_version.group(1)
         DOC_VERSION = DOC_LONGVERSION[0]
-        DOC_SRC = _part.group(1)
-        DOC_PAGE = _part.group(2)
+        DOC_TOPIC = _part.group(1)
+        DOC_PART = _part.group(2)
         DOC_SUFFIX = _suffix.group(1)
         DOC_VER_URL = '{}/{}/'.format(DOC_ROOT, DOC_VERSION)
-        DOC_PART_URL = '{}/{}/{}/'.format(DOC_ROOT, DOC_VERSION, DOC_SRC)
+        DOC_PART_URL = '{}/{}/{}/'.format(DOC_ROOT, DOC_VERSION, DOC_TOPIC)
         DOC_FULL_URL = '{}/{}/{}/{}{}'.format(
-                        DOC_ROOT, DOC_VERSION, DOC_SRC, DOC_PAGE, DOC_SUFFIX)
+                        DOC_ROOT, DOC_VERSION, DOC_TOPIC, DOC_PART, DOC_SUFFIX)
 
         meta['version'] = DOC_VERSION
         meta['version_full'] = DOC_LONGVERSION
-        meta['doc_part'] = DOC_SRC
-        if DOC_SRC == DOC_ROOT and DOC_PAGE == 'glossary':
-            meta['doc_part'] = 'glossary'
+        meta['doc_topic'] = DOC_TOPIC
+        if DOC_TOPIC == DOC_ROOT and DOC_PART == 'glossary':
+            meta['doc_topic'] = 'glossary'
+        meta['doc_part'] = DOC_PART
+
+        """ Setup json & database """
+        # use one json file per part/page, spread in directories named from 
+        # topics mirroring documentation structure
+        # use one table for each topic in database
+        
+
+        current_dir = os.getcwd()
         
         def internal_ref(arg):
-            ''' Replace page internal references and relative urls '''
+            """ Replaces internal anchor refs and relative urls with abs path """
             try:
                 def subpattern(match):
                     if match.group(1):
@@ -106,7 +114,6 @@ def create_definitions(fullpath, datastore=None, **kwargs):
                         return r'{}{}'.format(DOC_VER_URL, strings)
                     else:
                         print('{} not found :(( ', match)
-
                 # group 1: same page ref anchor, 
                 # group 2: pages in same part of doc, 
                 # group 3: pages in different parts of doc
@@ -120,11 +127,14 @@ def create_definitions(fullpath, datastore=None, **kwargs):
                 return False
 
         def markdown_header(arg):
+            """ For marking up headers in definition titles """
             header = {'h1': '# ', 'h2': '## ', 'h3': '### ', 'h4': '#### ', 
                         'h5': '##### ', 'h6': '###### '}
             return header[arg]
 
         def markdown_note_changes(arg):
+            """ < Hack > change some notes tagged with css classes with Markdown
+            before passed to html2text and get destroyed """
             identifiers = {
                     'versionchanged': 'blockquote', 
                     'versionadded': 'blockquote', 
@@ -136,7 +146,7 @@ def create_definitions(fullpath, datastore=None, **kwargs):
             return identifiers[arg]
 
         def fix_space_in_html(bstag, htmltag, css):
-            """fix annoying trailing space in <em>class </em> to avoid
+            """ Fix annoying trailing space in <em>class </em> to avoid
             incorrect markdown formatting"""
             # print('em:', section.dt.em)
             for tag in bstag.find_all(htmltag, {'class': css}):
@@ -150,11 +160,10 @@ def create_definitions(fullpath, datastore=None, **kwargs):
 
         """ Extract data from page """
         for section in _sections:
-            ''' [ Keywords ] section    '''
+            ''' [ Keywords ] for query lookup   '''
             keyword = section.code.text
             
             ''' [ Title ] sections '''
-            # start manipulate html elements: get the full html
             # replace relative URLs in href to absolute path using regex
             internal_link = internal_ref(section.a['href'])
             if internal_link is not False:
@@ -164,18 +173,17 @@ def create_definitions(fullpath, datastore=None, **kwargs):
             # print('link:', section_link)
             # insert link for metadata
             meta['url'] = section_link
-            # copy untouched section.dd first since we still want to 
-            # manipulate span in section.dd later
+            
+            # < Hack > copy untouched section.dd first since we're destroying  
+            # span & we still need to manipulate them in body (section.dd) later
             store_dd = cp.copy(section.dd)
             for span in section.find_all('span'):
                 span.unwrap()
             section.dd = store_dd
-            # Process title data
-            title = section.dt
-            # print('store:', title)
-            # fix annoying trailing space in <em>class </em> to avoid 
+
+            # Process title data from dt
+            # < Hack > fix annoying trailing space in <em>class </em> to avoid 
             # incorrect markdown formatting
-            # print('em:', section.dt.em)
             for em in section.dt.find_all('em', {'class': 'property'}):
                 # print('strip:', em.string.replace_with('class'))
                 next_txt = em.next_sibling.string
@@ -184,8 +192,9 @@ def create_definitions(fullpath, datastore=None, **kwargs):
                 # unwrap the sibling to avoid double markup
                 em.next_sibling.unwrap()
                 # print('em:', em.__dict__)
-            # print('em:', title.em)
-            transform_title =[]
+            # < Hack > around BS because making it output simple strings is like 
+            # getting your money back from asshole you misjudged a long time ago
+            transform_title = []
             for x in title.contents:
                 # print('x:', x)
                 transform_title.append(str(x))
@@ -196,21 +205,6 @@ def create_definitions(fullpath, datastore=None, **kwargs):
                     # '\n'
                     )
             # print('title:', title.replace('¶', '^URL'))
-            # print('tr: ', transform_title)
-            # title[-1] = transform_link
-            # print('section: ', section)
-            ''' flatten Tag objects to strings '''
-            # for i, val in enumerate(title):
-            #     if type(val) != str:
-            #         print('{}\nvalue: {}, i: {}'.format(title, val, i))
-            # transform_title = h.handle(title.string).strip().replace("',", "")
-            # convert title to markdown
-            # transform_link = h.handle(title_link).replace('¶', '^&sect;')
-            # print("".join(transform_title))
-            # for c in title:
-            #     print(''.join(str(c)))
-            # for c in title_link:
-                # title[-1:] = ''.join(str
 
             ''' [ Body ] section '''
             # convert internal & relative url links to absolute paths
@@ -225,13 +219,12 @@ def create_definitions(fullpath, datastore=None, **kwargs):
             # loop
             html_replacement = ['versionchanged', 'versionadded', 
                 'versionmodified','admonition-title', 'first', 'last']
+            # ugly hack, didn't work
             tmp = []
             for css in html_replacement:
-                # ugly hack, didn't work
                 for tag in section.dd.find_all(['div', 'span'], attrs={'class': css}):
                     if tag:
                         tag.unwrap()
-                        # print(tag)
 
             body = section.dd
             transform_body =[]
@@ -240,10 +233,10 @@ def create_definitions(fullpath, datastore=None, **kwargs):
                 transform_body.append(str(x))
             body = h.handle(''.join(transform_body).strip())
             # internal_link = internal_ref(link.a['href'])
-                
             # print('body: ::: ', body)
 
             footer = apply_footer(DOC_FULL_URL)
+            ''' Store all the data '''
             datadump.append(
                 {   'keyword': keyword, 
                     'title': title, 
@@ -251,6 +244,9 @@ def create_definitions(fullpath, datastore=None, **kwargs):
                     'footer': footer,
                     'metadata': meta    }
             )
+
+            
+            # with open()
         p.pprint(datadump)
 
 
@@ -263,69 +259,7 @@ def create_definitions(fullpath, datastore=None, **kwargs):
 create_definitions(fullpath)
 
 """
-        for desc in dl_tag:
-                
-                desc_keyword = desc.dt.code.get_text(strip=True)
-                # first pass to replace html tags uncaught by html2text
-                _replace_markup(desc.dt, ['code', 'em', 'span'])
-                desc_title = h.handle(desc.dt.text)
-                desc_content = desc.dd
-                
-                # desc_title = h.handle(desc.dt.prettify())
-                # desc_content = h.handle(desc.dd.prettify())
-                print('link: {}\ncontent: {}'.format(desc_title, desc_content))
-                # store the result to datastore
-                # log and stdout the result
-                with open('description.txt', 'a', encoding='utf-8') as f:
-                    # f.write('keyword: {0}\ntitle: {1}\ndefinition: {2}\n\n'
-                    #     .format(desc_keyword, desc_title, desc_content)
-                    #     )
-                    f.write('{0}\n{1}\n'
-                        .format(desc_title, desc_content)
-                        )
-
-    markdown_wrap = {
-
-        # 'a': re.sub(
-        #         r'(\"|\'#)',
-        #         r'https://docs.python.org/%s/library/functions.html\1" % docversion[0]', 
-        #         '\1'),
-        'blockquote': ' > ', 'b': '**', 'code': '`', 'div': '', 
-        'dt': '### ', 'em': '_', 'hr': '\n*****\n', 'p': '\n\n', 
-        'pre': '    ', 'span': '', 
-        }
-    css_class_identifiers = {
-        'headerlink': html_markdown['code'], 
-        'internal': html_markdown['b'],
-        'property': html_markdown['em'], 
-        'versionadded': html_markdown['blockquote'], 
-        'versionmodified': html_markdown['em'], 
-        'admonition-title': html_markdown['blockquote']
-        }
     escape_chars = { '*': '\*', '_': '\_' }
-
-    def _replace_markup(soup, search_tags):
-        for tag in soup.find_all(search_tags):
-            # print('-----\nremoving tag {} in :\n {}\n-----'.format(tag.name, tag))
-            if tag is not None and tag.name in html_markdown:
-                # new_tag = html_markdown[tag.name]
-                _markup = html_markdown[tag.name]
-                if tag.name == 'dt' or 'a':
-                    print('dt or a:', tag)
-                    continue
-                    # tag.replace_with(_markup)
-
-                new_string = tag.string
-                tag.replace_with(
-                    '{0}{1}{0}'.format(_markup, new_string)
-                    )
-                # new_string = tag.string
-                # del tag
-                # print('name: {}, replaced with: {} for {}\n-----\n'.format(tag, new_string, html_markdown[tag.name]))
-                # print('tag: {}\n-----\n'.format(tag))
-        print(soup)
-        return soup
-
 
         # print(descriptions)
         # if database, double check results stored, collect the query result and 
