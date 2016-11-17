@@ -4,9 +4,11 @@
 #
 #    pip-compile --output-file requirements.txt requirements.in
 #
+beautifulsoup4==4.5.1
 decorator==4.0.10         # via praw
-praw==4.0.0b21
+lxml==3.6.4
+praw==4.0.0b22
 prawcore==0.2.1           # via praw
-requests==2.11.1          # via praw, prawcore, update-checker
+requests==2.12.0          # via praw, prawcore, update-checker
 six==1.10                 # via praw
 update-checker==0.12      # via praw
