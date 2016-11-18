@@ -24,11 +24,11 @@ Database
 
 Pythonversion_Topics
             |__ Sections
-                    |__ function()  - title
-                                    - body
-                                    - footer
-                                    - url
-                                    - metadata
+                    |__ Syntax  - title
+                                - body
+                                - footer
+                                - url
+                                - metadata
 
 Python3_52_Library
             |__ functions
