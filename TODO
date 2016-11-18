@@ -32,8 +32,8 @@ Pythonversion_Topics
 
 Python3_52_Library
             |__ functions
-                        |__ open()  - title
-                                    - body
-                                    - footer
-                                    - url
-                                    - metadata
+                    |__ open()  - title
+                                - body
+                                - footer
+                                - url
+                                - metadata
