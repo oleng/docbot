@@ -16,8 +16,13 @@ DONE
 2016/11/18  found way to serve based on minor version instead of just v3/v2
 
 
-Python version
-    |__ Topics
+Database
+    |__ Table
+        |__ Row - Column
+                - Column
+                - Column
+
+Pythonversion_Topics
             |__ Sections
                     |__ function()  - title
                                     - body
@@ -25,9 +30,8 @@ Python version
                                     - url
                                     - metadata
 
-Version
-    |__ Library
-            |__ Built in Functions
+Python3_52_Library
+            |__ functions
                         |__ open()  - title
                                     - body
                                     - footer
