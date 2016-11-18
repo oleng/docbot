@@ -10,17 +10,20 @@ import os   # for collecting local data
 import re
 import pprint as p
 import copy as cp
+import time
+import datetime
+import random
+import simplejson as json
+import sqlite3
 from collections import OrderedDict
 from bs4 import BeautifulSoup as BS
 import html2text
-import simplejson
 
 ''' LOCAL TEST CONFIGS '''
 path = '~/Google Drive/docs/python-3.5.2_docs/library/'
 page = 'functions.html'
 fullpath = os.path.join(os.path.expanduser(path), page)
-dbpath = ''
-jsonpath = ''
+
 # descriptions = OrderedDict()
 
 def create_definitions(fullpath, datastore=None, **kwargs):
@@ -48,119 +51,116 @@ def create_definitions(fullpath, datastore=None, **kwargs):
         join 3 parts to a single section
         store to database
     """
+    ''' Initialize data sources '''
+    datadump = {}
+    meta = {}
+    h = html2text.HTML2Text()
+    h.ignore_links = False
+    with open(fullpath, 'r', encoding='utf-8') as doc:
+        _doc = BS(doc, 'lxml')
+    # datadump.append(sections)
+    _sections = _doc.find_all('dl')
+    _src = _doc.body.find(attrs={'class':'this-page-menu'})
+    _var_opt = ''.join(_doc.head.script.contents)
+
+    """ [ Metadata ] for hyperlinks """
+    _version = re.search(r'VERSION.*\'([\d\.]+)\'', _var_opt)
+    _suffix = re.search(r'SUFFIX.*\'(\.\w+)\'', _var_opt)
+    _part = re.search(r'\.\./_sources/([\w]+)/([\w]+)\.*', str(_src))
+    # Initialize variables for metadata
+    DOC_ROOT = 'https://docs.python.org'
+    DOC_LONGVERSION =_version.group(1)
+    DOC_VERSION = DOC_LONGVERSION[0]
+    DOC_TOPIC = _part.group(1)
+    DOC_SECTION = _part.group(2)
+    DOC_SUFFIX = _suffix.group(1)
+    DOC_VER_URL = '{}/{}/'.format(DOC_ROOT, DOC_VERSION)
+    DOC_SECTION_URL = '{}/{}/{}/'.format(DOC_ROOT, DOC_VERSION, DOC_TOPIC)
+    DOC_FULL_URL = '{}/{}/{}/{}{}'.format(
+                    DOC_ROOT, DOC_VERSION, DOC_TOPIC, DOC_SECTION, DOC_SUFFIX)
+    if _part.group(1) == (DOC_ROOT or fullpath) and DOC_SECTION == 'glossary':
+        DOC_TOPIC = 'glossary'
+
+    def internal_ref(arg):
+        """ Replaces internal anchor refs and relative urls with abs path """
+        try:
+            def subpattern(match):
+                if match.group(1):
+                    # print('<re matched group 1!> : {}{}'
+                    #     .format(DOC_FULL_URL, match.group(1)))
+                    return r'{}{}'.format(DOC_FULL_URL, match.group(1))
+                elif match.group(2):
+                    # print('<re matched group 2!> : {}{}'
+                    #     .format(DOC_SECTION_URL, match.group(2)))
+                    return r'{}{}'.format(DOC_SECTION_URL, match.group(2))
+                elif match.group(3):
+                    strings = match.group(3)[
+                                (match.start(3)+3): match.end()
+                                ]
+                    ''' This match.span print basically just for reminder '''
+                    # print('<re matched group 3> : {} : {}{}'
+                    #     .format(match.span(3), DOC_VER_URL, strings)
+                    #     )
+                    return r'{}{}'.format(DOC_VER_URL, strings)
+                else:
+                    print('{} not found :(( ', match)
+            # group 1: same page ref anchor, 
+            # group 2: pages in same part of doc, 
+            # group 3: pages in different parts of doc
+            urlsub = re.sub(
+              r'^(#[\w\.]+)|^([\w]+\.htm.[#\w.]+)|^(\.{2}/[\w+|/+]*\.htm.#.*)', 
+              subpattern, arg
+              )
+            return urlsub
+        # This might be the wrong way to catch exception
+        except re.error as exception:
+            print(exception)
+            return False
+
+    def markdown_header(arg):
+        """ For marking up headers in definition titles """
+        header = {'h1': '# ', 'h2': '## ', 'h3': '### ', 'h4': '#### ', 
+                    'h5': '##### ', 'h6': '###### '}
+        return header[arg]
+
+    def markdown_note_changes(arg):
+        """ < Hack > change some notes tagged with css classes with Markdown
+        before passed to html2text and get destroyed """
+        identifiers = {
+                'versionchanged': 'blockquote', 
+                'versionadded': 'blockquote', 
+                'versionmodified': 'em', 
+                'admonition-title': 'b',
+                'first': 'blockquote', 'last': 'blockquote',
+                }
+        # print('[ identifier {} : {} ]'.format(arg, identifiers[arg]))
+        return identifiers[arg]
+
+    def fix_space_in_html(bstag, htmltag, css):
+        """ Fix annoying trailing space in <em>class </em> to avoid
+        incorrect markdown formatting"""
+        # print('em:', section.dt.em)
+        for tag in bstag.find_all(htmltag, {'class': css}):
+            # print('strip:', em.string.replace_with('class'))
+            next_txt = tag.next_sibling.string
+            # print('next:', em.next_sibling.string.replace_with(
+                # " `{}`".format(next_txt)))
+            # unwrap the sibling to avoid double markup
+            tag.next_sibling.unwrap()
+        return bstag
+
+    def apply_footer(url):
+        pass
+
     def __init__():
         """
         Get Python version from the page (set by js: var DOCUMENTATIONS_OPTIONS) 
         and use them for URL variables and other metadata
         """
-        ''' Initialize data sources '''
-        datadump = {}
-        meta = {}
-        h = html2text.HTML2Text()
-        h.ignore_links = False
-        with open(fullpath, 'r', encoding='utf-8') as doc:
-            _doc = BS(doc, 'lxml')
-        # datadump.append(sections)
-        _sections = _doc.find_all('dl')
-        _src = _doc.body.find(attrs={'class':'this-page-menu'})
-        _var_opt = ''.join(_doc.head.script.contents)
-
-        """ [ Metadata ] for hyperlinks """
-        _version = re.search(r'VERSION.*\'([\d\.]+)\'', _var_opt)
-        _suffix = re.search(r'SUFFIX.*\'(\.\w+)\'', _var_opt)
-        _part = re.search(r'\.\./_sources/([\w]+)/([\w]+)\.*', str(_src))
-        # Initialize variables for metadata
-        DOC_ROOT = 'https://docs.python.org'
-        DOC_LONGVERSION =_version.group(1)
-        DOC_VERSION = DOC_LONGVERSION[0]
-        DOC_TOPIC = _part.group(1)
-        DOC_SECTION = _part.group(2)
-        DOC_SUFFIX = _suffix.group(1)
-        DOC_VER_URL = '{}/{}/'.format(DOC_ROOT, DOC_VERSION)
-        DOC_SECTION_URL = '{}/{}/{}/'.format(DOC_ROOT, DOC_VERSION, DOC_TOPIC)
-        DOC_FULL_URL = '{}/{}/{}/{}{}'.format(
-                    DOC_ROOT, DOC_VERSION, DOC_TOPIC, DOC_SECTION, DOC_SUFFIX)
-        if _part.group(1) == (DOC_ROOT or fullpath) and DOC_SECTION == 'glossary':
-            DOC_TOPIC = 'glossary'
-
         """ Setup json & database """
         # for each major version create a directory, with subdirectories for 
         # topics mirroring documentation structure, one json file per section. 
         # use one table for each topic in database
-        current_dir = os.getcwd()
-
-        def store_json(filename, directory, subdirectory):
-            """ Check if directory/files exists and create one if not """
-            # os.makedirs
-            pass
-            # return True 
-        
-        def internal_ref(arg):
-            """ Replaces internal anchor refs and relative urls with abs path """
-            try:
-                def subpattern(match):
-                    if match.group(1):
-                        # print('<re matched group 1!> : {}{}'
-                        #     .format(DOC_FULL_URL, match.group(1)))
-                        return r'{}{}'.format(DOC_FULL_URL, match.group(1))
-                    elif match.group(2):
-                        # print('<re matched group 2!> : {}{}'
-                        #     .format(DOC_SECTION_URL, match.group(2)))
-                        return r'{}{}'.format(DOC_SECTION_URL, match.group(2))
-                    elif match.group(3):
-                        strings = match.group(3)[
-                                    (match.start(3)+3): match.end()
-                                    ]
-                        ''' This match.span print basically just for reminder '''
-                        # print('<re matched group 3> : {} : {}{}'
-                        #     .format(match.span(3), DOC_VER_URL, strings)
-                        #     )
-                        return r'{}{}'.format(DOC_VER_URL, strings)
-                    else:
-                        print('{} not found :(( ', match)
-                # group 1: same page ref anchor, 
-                # group 2: pages in same part of doc, 
-                # group 3: pages in different parts of doc
-                urlsub = re.sub(
-                  r'^(#[\w\.]+)|^([\w]+\.htm.[#\w.]+)|^(\.{2}/[\w+|/+]*\.htm.#.*)', 
-                  subpattern, arg
-                  )
-                return urlsub
-            except re.error as exception:
-                print(exception)
-                return False
-
-        def markdown_header(arg):
-            """ For marking up headers in definition titles """
-            header = {'h1': '# ', 'h2': '## ', 'h3': '### ', 'h4': '#### ', 
-                        'h5': '##### ', 'h6': '###### '}
-            return header[arg]
-
-        def markdown_note_changes(arg):
-            """ < Hack > change some notes tagged with css classes with Markdown
-            before passed to html2text and get destroyed """
-            identifiers = {
-                    'versionchanged': 'blockquote', 
-                    'versionadded': 'blockquote', 
-                    'versionmodified': 'em', 
-                    'admonition-title': 'b',
-                    'first': 'blockquote', 'last': 'blockquote',
-                    }
-            # print('[ identifier {} : {} ]'.format(arg, identifiers[arg]))
-            return identifiers[arg]
-
-        def fix_space_in_html(bstag, htmltag, css):
-            """ Fix annoying trailing space in <em>class </em> to avoid
-            incorrect markdown formatting"""
-            # print('em:', section.dt.em)
-            for tag in bstag.find_all(htmltag, {'class': css}):
-                # print('strip:', em.string.replace_with('class'))
-                next_txt = tag.next_sibling.string
-                # print('next:', em.next_sibling.string.replace_with(
-                    # " `{}`".format(next_txt)))
-                # unwrap the sibling to avoid double markup
-                tag.next_sibling.unwrap()
-            return bstag
 
         """ Extract data from page """
         for section in _sections:
@@ -253,38 +253,50 @@ def create_definitions(fullpath, datastore=None, **kwargs):
                 'url' : url,
             }
             datadump[keyword] = keyword_dict.copy()
-            store_json(keyword, keyword_dict['topic'], keyword_dict['section'])
+            # json_dump(
+                # keyword_dict, 
+                # keyword, 
+                # keyword_dict['topic'], 
+                # keyword_dict['section']
+                # )
             # with open()
         p.pprint(datadump)
 
-
-    def apply_footer(url):
-        pass
-
     __init__()
 
+def db_query(database, table, column, row):
+    ''' Stolen from SO, until learning to deal with it '''
+    db = sqlite3.connect(database)
 
+    c = db.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS map (k text unique, v text)''')
+    db.commit()
+
+    def keys(db):
+        cursor = db.cursor()
+        return cursor.execute("""SELECT k FROM map""").fetchall()
+
+
+    def get(key, db, default=None):
+        cursor = db.cursor()
+        result = cursor.execute("""SELECT v FROM map WHERE k = ?""", (key,)).fetchone()
+        if result is None:
+            return default
+        return result[0]
+
+
+    def save(key, value, db):
+        cursor = db.cursor()
+        cursor.execute("""INSERT INTO map VALUES (?,?)""", (key, value))
+        db.commit()
+
+
+    with open('uniref90.fasta') as fasta_file:
+        for seq_record in SeqIO.parse(fasta_file, 'fasta'):
+           header = seq_record.id
+           uniID = header.split('_')[1]
+           seqs = str(seq_record.seq)
+           save(uniID, seqs, db)
+
+""" Start """
 create_definitions(fullpath)
-
-"""
-    escape_chars = { '*': '\*', '_': '\_' }
-
-        # print(descriptions)
-        # if database, double check results stored, collect the query result and 
-        # return it to caller function
-"""        
-
-
-def dumplog(time, thread):
-    scanlog.append(
-        {
-        'scanned': time, 
-        'id': thread.id, 
-        'author': thread.author,
-        'created_utc': thread.created_utc,
-        'permalink': thread.permalink,
-        'link_title': thread.title,
-        'selftext': thread.selftext,
-        'num_comments': thread.num_comments
-        }
-    )

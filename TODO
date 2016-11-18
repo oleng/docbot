@@ -3,5 +3,33 @@ TODO
 
 Create YAML config file to hold variables
 Freeze user call command 
-v3/v2 search feature 
-v3.5 or 3.6 granularity
+2016/11/18  clean up generated Markdown (another filter pass utility)
+2016/11/18  fine tune definition body
+2016/11/18  build logger that prints out to stdout
+
+
+
+DONE
+------
+
+2016/11/18  v3/v2 capability
+2016/11/18  found way to serve based on minor version instead of just v3/v2
+
+
+Python version
+    |__ Topics
+            |__ Sections
+                    |__ function()  - title
+                                    - body
+                                    - footer
+                                    - url
+                                    - metadata
+
+Version
+    |__ Library
+            |__ Built in Functions
+                        |__ open()  - title
+                                    - body
+                                    - footer
+                                    - url
+                                    - metadata
