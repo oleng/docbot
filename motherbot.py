@@ -67,7 +67,7 @@ def create_db(db_filename):
             CREATE TABLE IF NOT EXISTS Library (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 date_created DATE, 
-                version_id INTEGER, 
+                version_id INTEGER IDENTITY, 
                 version_major INTEGER, 
                 version_minor INTEGER, 
                 version_micro INTEGER,
@@ -83,7 +83,7 @@ def create_db(db_filename):
             CREATE TABLE IF NOT EXISTS Reference (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 date_created DATE, 
-                version_id INTEGER, 
+                version_id INTEGER IDENTITY, 
                 version_major INTEGER, 
                 version_minor INTEGER, 
                 version_micro INTEGER,
