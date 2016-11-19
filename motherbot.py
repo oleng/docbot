@@ -51,6 +51,7 @@ def db_query(query, db_filename, table=None, version_id=None, topic=None,
 
 def create_db(db_filename):
     '''Create related database and tables'''
+    # Leaving db_filename to argument for now
     # for security, don't use variables in function executing db queries
     # define here instead
     db_is_new = not os.path.exists(db_filename)
@@ -62,40 +63,38 @@ def create_db(db_filename):
         db = sqlite3.connect(db_filename)
         c = db.cursor()
         today = date.today()
-        c.execute('''
+        c.execute("""
             CREATE TABLE IF NOT EXISTS Library (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                date_created=? DATE, 
-                version_id INT, 
-                version_major INT, 
-                version_minor INT, 
-                version_micro INT,
+                date_created DATE, 
+                version_id INTEGER, 
+                version_major INTEGER, 
+                version_minor INTEGER, 
+                version_micro INTEGER,
                 topic CHAR(25), 
                 section CHAR(25), 
                 keyword CHAR(25), 
                 url TEXT, 
                 header TEXT, 
                 body TEXT, 
-                footer TEXT, 
-            )
-            ''', db_table, today) 
-        c.execute('''
+                footer TEXT)
+            """)
+        c.execute("""
             CREATE TABLE IF NOT EXISTS Reference (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                date_created=? DATE, 
-                version_id INT, 
-                version_major INT, 
-                version_minor INT, 
-                version_micro INT,
+                date_created DATE, 
+                version_id INTEGER, 
+                version_major INTEGER, 
+                version_minor INTEGER, 
+                version_micro INTEGER,
                 topic CHAR(25), 
                 section CHAR(25), 
                 keyword CHAR(25), 
                 url TEXT, 
                 header TEXT, 
                 body TEXT, 
-                footer TEXT,
-            )
-            ''', db_table, today)
+                footer TEXT)
+            """)
         db.commit()
     # close connection
     c.close()
