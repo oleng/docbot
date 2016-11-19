@@ -166,7 +166,7 @@ def create_definitions(fullpath, datastore=None, **kwargs):
                 'versionchanged': 'blockquote', 
                 'versionadded': 'blockquote', 
                 'versionmodified': 'em', 
-                'admonition-header': 'b',
+                'admonition-title': 'b',
                 'first': 'blockquote', 'last': 'blockquote',
                 }
         return identifiers[arg]
@@ -176,8 +176,6 @@ def create_definitions(fullpath, datastore=None, **kwargs):
         incorrect markdown formatting"""
         for tag in bstag.find_all(htmltag, {'class': css}):
             next_txt = tag.next_sibling.string
-            # print('next:', em.next_sibling.string.replace_with(
-                # " `{}`".format(next_txt)))
             # unwrap the sibling to avoid double markup
             tag.next_sibling.unwrap()
         return bstag
