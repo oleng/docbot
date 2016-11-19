@@ -35,6 +35,7 @@ def db_query(query, db_filename, table=None, keyword=None):
 
 def create_db(query, db_filename, database, table=None, keyword=None, 
             header=None, body=None, footer=None, url=None, metadata=None):
+    '''Create related database and tables'''
     db_is_new = not os.path.exists(db_filename)
     if not db_is_new:
         print 'Database exists, assume schema does, too.'
@@ -263,7 +264,15 @@ def create_definitions(fullpath, datastore=None, **kwargs):
                     }
             }
             datadump[keyword] = keyword_dict.copy() # faster than update()
-            db_query(database, table, **keyword_dict)
+            create_db(
+                database, table, 'keyword'= keyword, 'header' = header, 
+                'body'= body, 'footer'= footer, 'url'= url, 'metadata'= {
+                    'version': DOC_VERSION,
+                    'version_full': DOC_LONGVERSION,
+                    'topic': DOC_TOPIC,
+                    'section': DOC_SECTION,
+                }
+            )
 
     __init__()
 
