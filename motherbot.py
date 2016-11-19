@@ -8,10 +8,10 @@ git:
 """
 import os   # for collecting local data
 import re
+import time
+from datetime import date, datetime
 import pprint as p
 import copy as cp
-import time
-import datetime
 import random
 import simplejson as json
 import sqlite3
@@ -23,31 +23,60 @@ import html2text
 path = '~/Google Drive/docs/python-3.5.2_docs/library/'
 page = 'functions.html'
 fullpath = os.path.join(os.path.expanduser(path), page)
-
 # descriptions = OrderedDict()
 
-def create_definitions(fullpath, datastore=None, **kwargs):
-    """ This is the main class to initialize the definitions data 
-    Steps:
-        1. extract definition informations from local documentation copy,
-        2. convert the markup to markdown
-        3. store the result to a datastorage
-        4. initialize the data index.
-        Arguments:
-        URL path
-        datastore
-        function name and query (optional)
-        If given function as keyword arguments, it will look up return 
+def db_query(db_filename, database, table, **kwargs):
+    """ DB related functions """
+    db = sqlite3.connect(db_filename)
+    c = db.cursor()
+    create_db()
+    keyword, header, url, data = kwargs.get(str.format(keyword, header, url, data))
 
-        start by getting the doc file
+    def create_db(database, db_filename):
+        db_is_new = not os.path.exists(db_filename)
+        if not db_is_new:
+            print 'Database exists, assume schema does, too.'
+            return
+        elif db_is_new:
+            print 'Need to create schema. Creating database.'
+            db = sqlite3.connect(db_filename)
+            c = db.cursor()
+            today = date.today()
+            c.execute(
+                '''
+                CREATE TABLE IF NOT EXISTS database=?
+                (
+                    id INTEGER PRIMARY KEY, date_created=? DATE, 
+                    keyword=? CHAR(50), header=? TEXT, body=? TEXT, 
+                    footer=? TEXT, url=? TEXT, metadata=? TEXT
+                )
+                ''', 
+                database, today, keyword, header, body, footer, url, metadata,
+                )
+            db.commit()
+        c.close()
+        db.close()
+            
+    def get(database, table, key):
+        pass
+
+
+def create_definitions(fullpath, datastore=None, **kwargs):
+    """ This is the main function (class?) to initialize the definitions data 
+    Arguments:
+        URL path
+        datastore: database URL
+        function name and query (optional for scraping new docs) 
+
+    Process: start by getting the doc file
         get the chuncks of sections of definition
         store to temp datastore?
-        process markup conversion on each of section into 3 parts, 
-        - keyword 
-        - title: function syntax & arguments
+        process markup conversion on each of section into parts, 
+        - keyword : exact syntax
+        - header: function syntax & arguments
         - body: function definition
         then gather metadata into a dict
-        - metadata: section link, h1 title
+        - metadata: section link, h1 header
         join 3 parts to a single section
         store to database
     """
@@ -58,21 +87,20 @@ def create_definitions(fullpath, datastore=None, **kwargs):
     h.ignore_links = False
     with open(fullpath, 'r', encoding='utf-8') as doc:
         _doc = BS(doc, 'lxml')
-    # datadump.append(sections)
     _sections = _doc.find_all('dl')
     _src = _doc.body.find(attrs={'class':'this-page-menu'})
     _var_opt = ''.join(_doc.head.script.contents)
 
-    """ [ Metadata ] for hyperlinks """
+    """ [ Metadata ] for naming & hyperlinks """
     _version = re.search(r'VERSION.*\'([\d\.]+)\'', _var_opt)
     _suffix = re.search(r'SUFFIX.*\'(\.\w+)\'', _var_opt)
     _part = re.search(r'\.\./_sources/([\w]+)/([\w]+)\.*', str(_src))
     # Initialize variables for metadata
     DOC_ROOT = 'https://docs.python.org'
-    DOC_LONGVERSION =_version.group(1)
-    DOC_VERSION = DOC_LONGVERSION[0]
-    DOC_TOPIC = _part.group(1)
-    DOC_SECTION = _part.group(2)
+    DOC_LONGVERSION =_version.group(1)  # i.e. 3.5.2
+    DOC_VERSION = DOC_LONGVERSION[0]    # i.e. 3
+    DOC_TOPIC = _part.group(1)          # i.e. library, references, etc
+    DOC_SECTION = _part.group(2)        # i.e, functions, exceptions,logging
     DOC_SUFFIX = _suffix.group(1)
     DOC_VER_URL = '{}/{}/'.format(DOC_ROOT, DOC_VERSION)
     DOC_SECTION_URL = '{}/{}/{}/'.format(DOC_ROOT, DOC_VERSION, DOC_TOPIC)
@@ -81,17 +109,25 @@ def create_definitions(fullpath, datastore=None, **kwargs):
     if _part.group(1) == (DOC_ROOT or fullpath) and DOC_SECTION == 'glossary':
         DOC_TOPIC = 'glossary'
 
-    def internal_ref(arg):
+    """ SETUP database (json ?)
+    DB : See DocBot_Schema.sql  
+    """
+    # There's another database for analytic & logging purposes
+    database = 'Python{0}_{1}_{2}'.format(
+        DOC_VERSION, DOC_LONGVERSION.strip('.')[1:], DOC_TOPIC.capitalize()
+        )
+    db_table = DOC_SECTION.capitalize()
+    # for security, don't use variables in function executing db queries
+    # define here instead
+    db_filename = '{}.db'.format(database)  
+
+    def transform_relative_links(arg):
         """ Replaces internal anchor refs and relative urls with abs path """
         try:
             def subpattern(match):
                 if match.group(1):
-                    # print('<re matched group 1!> : {}{}'
-                    #     .format(DOC_FULL_URL, match.group(1)))
                     return r'{}{}'.format(DOC_FULL_URL, match.group(1))
                 elif match.group(2):
-                    # print('<re matched group 2!> : {}{}'
-                    #     .format(DOC_SECTION_URL, match.group(2)))
                     return r'{}{}'.format(DOC_SECTION_URL, match.group(2))
                 elif match.group(3):
                     strings = match.group(3)[
@@ -118,7 +154,7 @@ def create_definitions(fullpath, datastore=None, **kwargs):
             return False
 
     def markdown_header(arg):
-        """ For marking up headers in definition titles """
+        """ For marking up headers in definition headers """
         header = {'h1': '# ', 'h2': '## ', 'h3': '### ', 'h4': '#### ', 
                     'h5': '##### ', 'h6': '###### '}
         return header[arg]
@@ -130,18 +166,15 @@ def create_definitions(fullpath, datastore=None, **kwargs):
                 'versionchanged': 'blockquote', 
                 'versionadded': 'blockquote', 
                 'versionmodified': 'em', 
-                'admonition-title': 'b',
+                'admonition-header': 'b',
                 'first': 'blockquote', 'last': 'blockquote',
                 }
-        # print('[ identifier {} : {} ]'.format(arg, identifiers[arg]))
         return identifiers[arg]
 
     def fix_space_in_html(bstag, htmltag, css):
         """ Fix annoying trailing space in <em>class </em> to avoid
         incorrect markdown formatting"""
-        # print('em:', section.dt.em)
         for tag in bstag.find_all(htmltag, {'class': css}):
-            # print('strip:', em.string.replace_with('class'))
             next_txt = tag.next_sibling.string
             # print('next:', em.next_sibling.string.replace_with(
                 # " `{}`".format(next_txt)))
@@ -153,150 +186,91 @@ def create_definitions(fullpath, datastore=None, **kwargs):
         pass
 
     def __init__():
-        """
-        Get Python version from the page (set by js: var DOCUMENTATIONS_OPTIONS) 
-        and use them for URL variables and other metadata
-        """
-        """ Setup json & database """
-        # for each major version create a directory, with subdirectories for 
-        # topics mirroring documentation structure, one json file per section. 
-        # use one table for each topic in database
-
+        """Get Python version from the page (set by javascript in header: 
+        var DOCUMENTATIONS_OPTIONS) and use them for URL variables and 
+        other metadata"""
         """ Extract data from page """
         for section in _sections:
             ''' [ Keywords ] for query lookup   '''
             keyword = section.code.text
             
-            ''' [ Title ] sections '''
+            ''' [ Header ] sections '''
             # replace relative URLs in href to absolute path using regex
-            internal_link = internal_ref(section.a['href'])
+            internal_link = transform_relative_links(section.a['href'])
             if internal_link is not False:
                 section.a['href'] = internal_link
-                # p.pprint(title_link.__dict__)
+                # p.pprint(header_link.__dict__)
             url = section.a['href']
-            # print('link:', url)
-            # insert link for metadata
             
-            # < Hack > copy untouched section.dd first since we're destroying  
-            # span & we still need to manipulate them in body (section.dd) later
+            # < Hack > copy untouched section.dd 1st since we're destroying all 
+            # spans & still need to manipulate them in body (section.dd) later
             store_dd = cp.copy(section.dd)
             for span in section.find_all('span'):
                 span.unwrap()
+            # put copy back
             section.dd = store_dd
 
-            # Process title data from dt
+            # Process header data from dt
             # < Hack > fix annoying trailing space in <em>class </em> to avoid 
             # incorrect markdown formatting
             for em in section.dt.find_all('em', {'class': 'property'}):
-                # print('strip:', em.string.replace_with('class'))
                 next_txt = em.next_sibling.string
-                # print('next:', em.next_sibling.string.replace_with(
-                    # " `{}`".format(next_txt)))
                 # unwrap the sibling to avoid double markup
                 em.next_sibling.unwrap()
-                # print('em:', em.__dict__)
             # < Hack > around BS because making it output simple strings is like 
             # getting your money back from asshole you misjudged a long time ago
-            transform_title = []
+            transform_header = []
             for content in section.dt.contents:
-                # print('content:', content)
-                transform_title.append(str(content))
-            # Format title section
-            title = '{0}{1}'.format(
+                transform_header.append(str(content))
+            # Format header section
+            header = '{0}{1}'.format(
                     markdown_header('h5'),
-                    h.handle(''.join(transform_title).strip()),
-                    # '\n'
+                    h.handle(''.join(transform_header).strip()),
                     )
-            # print('title:', title.replace('¶', '^URL'))
 
             ''' [ Body ] section '''
             # convert internal & relative url links to absolute paths
             for link in section.dd.select('a[href]'):
                 if link is not None:
-                    # p.pprint(link.__dict__)
-                    # print('\n(href before): {}'.format(link.attrs['href']))
-                    transform_link = internal_ref(link.attrs['href'])
+                    transform_link = transform_relative_links(link.attrs['href'])
                     link.attrs['href'] = transform_link
-                    # print(link)
             # stupid filter passes but it's easier than figuring out the right 
             # loop
+            '''ugly hack, didn't work
             html_replacement = ['versionchanged', 'versionadded', 
-                'versionmodified','admonition-title', 'first', 'last']
-            # ugly hack, didn't work
+                'versionmodified','admonition-header', 'first', 'last']
             tmp = []
             for css in html_replacement:
                 for tag in section.dd.find_all(['div', 'span'], attrs={'class': css}):
                     if tag:
                         tag.unwrap()
-
-            body = section.dd
+            '''
             transform_body =[]
-            for content in body.contents:
-                # print('x:', x)
+            for content in section.dd.contents:
                 transform_body.append(str(content))
             body = h.handle(''.join(transform_body).strip())
-            # internal_link = internal_ref(link.a['href'])
-            # print('body: ::: ', body)
-
-            footer = apply_footer(DOC_FULL_URL)
+            ''' [ Footer ]  '''
+            footer = apply_footer(DOC_FULL_URL) # to do
 
             ''' Store all the data '''
             keyword_dict = { 
-                'topic': DOC_TOPIC,
-                'version': DOC_VERSION,
-                'version_full': DOC_LONGVERSION,
-                'topic': DOC_TOPIC,
-                'section': DOC_SECTION,
-                'title': title, 
+                'keyword': keyword,
+                'header': header, 
                 'body': body, 
                 'footer': footer,
                 'url' : url,
+                'metadata': {
+                    'version': DOC_VERSION,
+                    'version_full': DOC_LONGVERSION,
+                    'topic': DOC_TOPIC,
+                    'section': DOC_SECTION,
+                    }
             }
-            datadump[keyword] = keyword_dict.copy()
-            # json_dump(
-                # keyword_dict, 
-                # keyword, 
-                # keyword_dict['topic'], 
-                # keyword_dict['section']
-                # )
-            # with open()
-        p.pprint(datadump)
+            datadump[keyword] = keyword_dict.copy() # faster than update()
+            db_query(database, table, **keyword_dict)
 
     __init__()
 
-def db_query(database, table, column, row):
-    ''' Stolen from SO, until learning to deal with it '''
-    db = sqlite3.connect(database)
-
-    c = db.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS map (k text unique, v text)''')
-    db.commit()
-
-    def keys(db):
-        cursor = db.cursor()
-        return cursor.execute("""SELECT k FROM map""").fetchall()
-
-
-    def get(key, db, default=None):
-        cursor = db.cursor()
-        result = cursor.execute("""SELECT v FROM map WHERE k = ?""", (key,)).fetchone()
-        if result is None:
-            return default
-        return result[0]
-
-
-    def save(key, value, db):
-        cursor = db.cursor()
-        cursor.execute("""INSERT INTO map VALUES (?,?)""", (key, value))
-        db.commit()
-
-
-    with open('uniref90.fasta') as fasta_file:
-        for seq_record in SeqIO.parse(fasta_file, 'fasta'):
-           header = seq_record.id
-           uniID = header.split('_')[1]
-           seqs = str(seq_record.seq)
-           save(uniID, seqs, db)
 
 """ Start """
 create_definitions(fullpath)
