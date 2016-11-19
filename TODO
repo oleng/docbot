@@ -22,24 +22,35 @@ Database
                 - Column
                 - Column
 
-Pythonversion_Topics
-            |__ Sections
-                    |__ Syntax  - title
-                    |           - body
-                    |           - footer
-                    |           - url
-                    |           - metadata
-                    |
-                    |__ Syntax  - title
-                                - body
-                                - footer
-                                - url
-                                - metadata
+DocBot_DB
+    |__ Sections
+            |__ Syntax      - id
+            |               - date_created
+            |               - version_id
+            |               - version_major
+            |               - version_minor
+            |               - version_micro
+            |               - topic
+            |               - section
+            |               - keyword
+            |               - url
+            |               - header
+            |               - body
+            |               - footer
 
-Python3_52_Library
-            |__ functions
-                    |__ open()  - title
-                                - body
-                                - footer
-                                - url
-                                - metadata
+
+DocBot_DB
+    |__ Library
+            |__ classmethod - id
+            |               - date_created
+            |               - version_id: 3
+            |               - version_major: 3
+            |               - version_minor: 5
+            |               - version_micro: 2
+            |               - topic: standard library
+            |               - section: built-in functions
+            |               - keyword: classmethod
+            |               - url
+            |               - header
+            |               - body
+            |               - footer

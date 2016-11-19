@@ -8,7 +8,6 @@ git:
 """
 import os   # for collecting local data
 import re
-import time
 from datetime import date, datetime
 import pprint as p
 import copy as cp
@@ -25,16 +24,35 @@ page = 'functions.html'
 fullpath = os.path.join(os.path.expanduser(path), page)
 # descriptions = OrderedDict()
 
-def db_query(query, db_filename, table, keyword):
-    """ get DB contents """
+def db_query(query, db_filename, table=None, version_id=None, topic=None, 
+            section=None, keyword=None, **kwargs):
+    """
+    query: get/insert 
+    db_filename: to specify which database to access
+    kwargs to specify 
+    """
+    ''' kwargs to variables '''
+    # database: DocBot_DB
+    url = kwargs.get('url')
+    header = kwargs.get('header') 
+    body = kwargs.get('body')
+    footer = kwargs.get('footer')
+    # database: activity
+    date_query = kwargs.get('date_query')
+    username = kwargs.get('username')
+    freq = kwargs.get('frequency')
+
+    """ update & get DB contents """
     with sqlite3.connect(db_filename) as db:
         c = db.cursor()
         # cursor.execute('''
         # SELECT
         # ''')
 
-def create_db(db_filename, db_table):
+def create_db(db_filename):
     '''Create related database and tables'''
+    # for security, don't use variables in function executing db queries
+    # define here instead
     db_is_new = not os.path.exists(db_filename)
     if not db_is_new:
         print('Database exists, assume schema does, too.')
@@ -45,11 +63,37 @@ def create_db(db_filename, db_table):
         c = db.cursor()
         today = date.today()
         c.execute('''
-            CREATE TABLE IF NOT EXISTS ?
-            (
-                id INTEGER PRIMARY KEY, date_created=? DATE, 
-                keyword UNIQUE CHAR(50), header TEXT, body TEXT, footer TEXT, 
-                url TEXT, metadata TEXT
+            CREATE TABLE IF NOT EXISTS Library (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                date_created=? DATE, 
+                version_id INT, 
+                version_major INT, 
+                version_minor INT, 
+                version_micro INT,
+                topic CHAR(25), 
+                section CHAR(25), 
+                keyword CHAR(25), 
+                url TEXT, 
+                header TEXT, 
+                body TEXT, 
+                footer TEXT, 
+            )
+            ''', db_table, today) 
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS Reference (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                date_created=? DATE, 
+                version_id INT, 
+                version_major INT, 
+                version_minor INT, 
+                version_micro INT,
+                topic CHAR(25), 
+                section CHAR(25), 
+                keyword CHAR(25), 
+                url TEXT, 
+                header TEXT, 
+                body TEXT, 
+                footer TEXT,
             )
             ''', db_table, today)
         db.commit()
@@ -112,13 +156,7 @@ def create_definitions(fullpath):
     DB : See DocBot_Schema.sql  
     """
     # There's another database for analytic & logging purposes
-    database = 'Python{0}_{1}_{2}'.format(
-        DOC_VERSION, DOC_LONGVERSION.strip('.')[1:], DOC_TOPIC.capitalize()
-        )
-    db_table = DOC_SECTION.capitalize()
-    # for security, don't use variables in function executing db queries
-    # define here instead
-    db_filename = '{}.db'.format(database)  
+    db_table = DOC_SECTION.capitalize()  
 
     def transform_relative_links(arg):
         """ Replaces internal anchor refs and relative urls with abs path """
@@ -228,49 +266,31 @@ def create_definitions(fullpath):
                 if link is not None:
                     transform_link = transform_relative_links(link.attrs['href'])
                     link.attrs['href'] = transform_link
-            # stupid filter passes but it's easier than figuring out the right 
-            # loop
-            '''ugly hack, didn't work
-            html_replacement = ['versionchanged', 'versionadded', 
-                'versionmodified','admonition-title', 'first', 'last']
-            tmp = []
-            for css in html_replacement:
-                for tag in section.dd.find_all(['div', 'span'], attrs={'class': css}):
-                    if tag:
-                        tag.unwrap()
-            '''
+
             transform_body =[]
             for content in section.dd.contents:
                 transform_body.append(str(content))
             body = h.handle(''.join(transform_body).strip())
+
             ''' [ Footer ]  '''
             footer = apply_footer(DOC_FULL_URL) # to do
 
             ''' Store all the data '''
             keyword_dict = { 
+                'topic': DOC_TOPIC,
+                'section': DOC_SECTION,
+                'version': DOC_VERSION,
+                'version_full': DOC_LONGVERSION,
                 'keyword': keyword,
                 'header': header, 
                 'body': body, 
                 'footer': footer,
                 'url' : url,
-                'metadata': {
-                    'version': DOC_VERSION,
-                    'version_full': DOC_LONGVERSION,
-                    'topic': DOC_TOPIC,
-                    'section': DOC_SECTION,
-                    }
             }
             datadump[keyword] = keyword_dict.copy() # faster than update()
-
-            print('filename: {}, table: {}'.format(db_filename, db_table))
-            create_db(db_filename, db_table)
-            # 'keyword'= keyword, 'header' = header, 'body'= body, 
-            # 'footer'= footer, 'url'= url, 'metadata'= {
-            #         'version': DOC_VERSION,
-            #         'version_full': DOC_LONGVERSION,
-            #         'topic': DOC_TOPIC,
-            #         'section': DOC_SECTION,
-            #         }
+            create_db('DocBot_DB.db')
+            # db_query(query, db_filename, table=db_table, version_id=None, keyword=Noneversion_id=None, topic=None, section=None, keyword=None, )
+            # print('filename: {}, table: {}'.format(db_filename, db_table))
 
     __init__()
 
