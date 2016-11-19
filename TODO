@@ -5,7 +5,7 @@ Create YAML config file to hold variables
 Freeze user call command 
 2016/11/18  clean up generated Markdown (another filter pass utility)
 2016/11/18  fine tune definition body
-2016/11/18  build logger that prints out to stdout
+2016/11/18  build logger that also prints out to stdout
 
 
 

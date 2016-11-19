@@ -25,41 +25,39 @@ page = 'functions.html'
 fullpath = os.path.join(os.path.expanduser(path), page)
 # descriptions = OrderedDict()
 
-def db_query(db_filename, database, table, **kwargs):
-    """ DB related functions """
-    db = sqlite3.connect(db_filename)
-    c = db.cursor()
-    create_db()
-    keyword, header, url, data = kwargs.get(str.format(keyword, header, url, data))
+def db_query(query, db_filename, table=None, keyword=None):
+    """ get DB contents """
+    with sqlite3.connect(db_filename) as db:
+        c = db.cursor()
+        # cursor.execute('''
+        # SELECT
+        # ''')
 
-    def create_db(database, db_filename):
-        db_is_new = not os.path.exists(db_filename)
-        if not db_is_new:
-            print 'Database exists, assume schema does, too.'
-            return
-        elif db_is_new:
-            print 'Need to create schema. Creating database.'
-            db = sqlite3.connect(db_filename)
-            c = db.cursor()
-            today = date.today()
-            c.execute(
-                '''
-                CREATE TABLE IF NOT EXISTS database=?
-                (
-                    id INTEGER PRIMARY KEY, date_created=? DATE, 
-                    keyword=? CHAR(50), header=? TEXT, body=? TEXT, 
-                    footer=? TEXT, url=? TEXT, metadata=? TEXT
-                )
-                ''', 
-                database, today, keyword, header, body, footer, url, metadata,
-                )
-            db.commit()
-        c.close()
-        db.close()
-            
-    def get(database, table, key):
-        pass
-
+def create_db(query, db_filename, database, table=None, keyword=None, 
+            header=None, body=None, footer=None, url=None, metadata=None):
+    db_is_new = not os.path.exists(db_filename)
+    if not db_is_new:
+        print 'Database exists, assume schema does, too.'
+        return
+    elif db_is_new:
+        print 'Need to create schema. Creating database.'
+        db = sqlite3.connect(db_filename)
+        c = db.cursor()
+        today = date.today()
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS ?
+            (
+                id INTEGER PRIMARY KEY, date_created=? DATE, 
+                keyword=? UNIQUE CHAR(50), header=? TEXT, body=? TEXT, 
+                footer=? TEXT, url=? TEXT, metadata=? TEXT
+            )
+            ''', 
+            database, today, keyword, header, body, footer, url, metadata,
+            )
+        db.commit()
+    # close connection
+    c.close()
+    db.close()
 
 def create_definitions(fullpath, datastore=None, **kwargs):
     """ This is the main function (class?) to initialize the definitions data 
@@ -92,6 +90,9 @@ def create_definitions(fullpath, datastore=None, **kwargs):
     _var_opt = ''.join(_doc.head.script.contents)
 
     """ [ Metadata ] for naming & hyperlinks """
+    """Get Python version from the page (set by javascript in header: 
+    var DOCUMENTATIONS_OPTIONS) and use them for URL variables and other 
+    metadata"""
     _version = re.search(r'VERSION.*\'([\d\.]+)\'', _var_opt)
     _suffix = re.search(r'SUFFIX.*\'(\.\w+)\'', _var_opt)
     _part = re.search(r'\.\./_sources/([\w]+)/([\w]+)\.*', str(_src))
@@ -184,9 +185,6 @@ def create_definitions(fullpath, datastore=None, **kwargs):
         pass
 
     def __init__():
-        """Get Python version from the page (set by javascript in header: 
-        var DOCUMENTATIONS_OPTIONS) and use them for URL variables and 
-        other metadata"""
         """ Extract data from page """
         for section in _sections:
             ''' [ Keywords ] for query lookup   '''
@@ -236,7 +234,7 @@ def create_definitions(fullpath, datastore=None, **kwargs):
             # loop
             '''ugly hack, didn't work
             html_replacement = ['versionchanged', 'versionadded', 
-                'versionmodified','admonition-header', 'first', 'last']
+                'versionmodified','admonition-title', 'first', 'last']
             tmp = []
             for css in html_replacement:
                 for tag in section.dd.find_all(['div', 'span'], attrs={'class': css}):
