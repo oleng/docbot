@@ -24,81 +24,76 @@ page = 'functions.html'
 fullpath = os.path.join(os.path.expanduser(path), page)
 # descriptions = OrderedDict()
 
-def db_query(query, db_filename, table=None, version_id=None, topic=None, 
-            section=None, keyword=None, **kwargs):
+def db_query(query, db_filename, table=None, version_id=None, version_major=None, 
+            version_minor=None, version_micro=None, topic=None, section=None, 
+            keyword=None, url=None, header=None, body=None, footer=None):
+    """ update & get DB contents 
+    See for variable in SQL params: docs/library/sqlite3.html
+        http://stackoverflow.com/a/1010804/6882768
+        http://stackoverflow.com/a/25387570/6882768 
+    Arguments:
+        query: get/insert 
+        db_filename: to specify which database to access
+        kwargs to specify 
+        >>> kwargs to variables (change this later)
+        # database: activity
+        date_query = kwargs.get('date_query')
+        username = kwargs.get('username')
+        freq = kwargs.get('frequency')
     """
-    query: get/insert 
-    db_filename: to specify which database to access
-    kwargs to specify 
-    """
-    ''' kwargs to variables '''
-    # database: DocBot_DB
-    url = kwargs.get('url')
-    header = kwargs.get('header') 
-    body = kwargs.get('body')
-    footer = kwargs.get('footer')
-    # database: activity
-    date_query = kwargs.get('date_query')
-    username = kwargs.get('username')
-    freq = kwargs.get('frequency')
-
-    """ update & get DB contents """
     with sqlite3.connect(db_filename) as db:
         c = db.cursor()
-        # cursor.execute('''
-        # SELECT
-        # ''')
+        today = datetime.today()    
+        if query == 'insert' and table == 'Library':
+            print('Populating {}...'.format(table))
+            datagroup = (
+                version_id, version_major, version_minor, version_micro, 
+                topic, section, keyword, url, header, body, footer, today
+                )
+            c.execute('''
+                INSERT INTO Library 
+                (
+                version_id, version_major, version_minor, version_micro, 
+                topic, section, keyword, url, header, body, footer, 
+                date_created
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', datagroup)
+            db.commit()
 
-def create_db(db_filename):
-    '''Create related database and tables'''
-    # Leaving db_filename to argument for now
-    # for security, don't use variables in function executing db queries
-    # define here instead
+def create_db(db_filename, table):
+    """Create related database and tables"""
     db_is_new = not os.path.exists(db_filename)
-    if not db_is_new:
+    if db_is_new:
+        print('Need to create schema. Creating database.')
+        with sqlite3.connect(db_filename) as db:
+            c = db.cursor()
+            today = datetime.today()
+            if table == 'Library':
+                print('Creating table {}...'.format(table))        
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS Library (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                        date_created DATE, 
+                        version_id INTEGER IDENTITY, 
+                        version_major INTEGER, 
+                        version_minor INTEGER, 
+                        version_micro INTEGER,
+                        topic CHAR(25), 
+                        section CHAR(25), 
+                        keyword CHAR(25), 
+                        url TEXT, 
+                        header TEXT, 
+                        body TEXT, 
+                        footer TEXT)
+                    """)
+                db.commit()
+        return
+
+    elif not db_is_new:
         print('Database exists, assume schema does, too.')
         return
-    elif db_is_new:
-        print('Need to create schema. Creating database.')
-        db = sqlite3.connect(db_filename)
-        c = db.cursor()
-        today = date.today()
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS Library (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                date_created DATE, 
-                version_id INTEGER IDENTITY, 
-                version_major INTEGER, 
-                version_minor INTEGER, 
-                version_micro INTEGER,
-                topic CHAR(25), 
-                section CHAR(25), 
-                keyword CHAR(25), 
-                url TEXT, 
-                header TEXT, 
-                body TEXT, 
-                footer TEXT)
-            """)
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS Reference (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                date_created DATE, 
-                version_id INTEGER IDENTITY, 
-                version_major INTEGER, 
-                version_minor INTEGER, 
-                version_micro INTEGER,
-                topic CHAR(25), 
-                section CHAR(25), 
-                keyword CHAR(25), 
-                url TEXT, 
-                header TEXT, 
-                body TEXT, 
-                footer TEXT)
-            """)
-        db.commit()
-    # close connection
-    c.close()
-    db.close()
+    
 
 def create_definitions(fullpath):
     """ This is the main function (class?) to initialize the definitions data 
@@ -120,31 +115,31 @@ def create_definitions(fullpath):
         store to database
     """
     ''' Initialize data sources '''
-    datadump = {}
-    meta = {}
-    h = html2text.HTML2Text()
-    h.ignore_links = False
     with open(fullpath, 'r', encoding='utf-8') as doc:
         _doc = BS(doc, 'lxml')
-    _sections = _doc.find_all('dl')
-    _src = _doc.body.find(attrs={'class':'this-page-menu'})
-    _var_opt = ''.join(_doc.head.script.contents)
+    datadump        = {}
+    h               = html2text.HTML2Text()
+    h.ignore_links  = False
+    _sections       = _doc.find_all('dl')
+    # in <ul class="this-page-menu"> <...><li><a href="../_sources/library/functions.txt"
+    _src            = _doc.body.find(attrs={'class':'this-page-menu'})     
+    _var_opt        = ''.join(_doc.head.script.contents)
 
     """ [ Metadata ] for naming & hyperlinks """
     """Get Python version from the page (set by javascript in header: 
     var DOCUMENTATIONS_OPTIONS) and use them for URL variables and other 
     metadata"""
-    _version = re.search(r'VERSION.*\'([\d\.]+)\'', _var_opt)
-    _suffix = re.search(r'SUFFIX.*\'(\.\w+)\'', _var_opt)
-    _part = re.search(r'\.\./_sources/([\w]+)/([\w]+)\.*', str(_src))
+    _version        = re.search(r'VERSION.*\'([\d\.]+)\'', _var_opt)
+    _suffix         = re.search(r'SUFFIX.*\'(\.\w+)\'', _var_opt)
+    _part           = re.search(r'\.\./_sources/([\w]+)/([\w]+)\.*', str(_src))
     # Initialize variables for metadata
-    DOC_ROOT = 'https://docs.python.org'
+    DOC_ROOT        = 'https://docs.python.org'
     DOC_LONGVERSION =_version.group(1)  # i.e. 3.5.2
-    DOC_VERSION = DOC_LONGVERSION[0]    # i.e. 3
-    DOC_TOPIC = _part.group(1)          # i.e. library, references, etc
-    DOC_SECTION = _part.group(2)        # i.e, functions, exceptions,logging
-    DOC_SUFFIX = _suffix.group(1)
-    DOC_VER_URL = '{}/{}/'.format(DOC_ROOT, DOC_VERSION)
+    DOC_VERSION     = DOC_LONGVERSION[0]    # i.e. 3
+    DOC_TOPIC       = _part.group(1)          # i.e. library, references, etc
+    DOC_SECTION     = _part.group(2)        # i.e, functions, exceptions,logging
+    DOC_SUFFIX      = _suffix.group(1)
+    DOC_VER_URL     = '{}/{}/'.format(DOC_ROOT, DOC_VERSION)
     DOC_SECTION_URL = '{}/{}/{}/'.format(DOC_ROOT, DOC_VERSION, DOC_TOPIC)
     DOC_FULL_URL = '{}/{}/{}/{}{}'.format(
                     DOC_ROOT, DOC_VERSION, DOC_TOPIC, DOC_SECTION, DOC_SUFFIX)
@@ -155,7 +150,11 @@ def create_definitions(fullpath):
     DB : See DocBot_Schema.sql  
     """
     # There's another database for analytic & logging purposes
-    db_table = DOC_SECTION.capitalize()  
+    db_table      = DOC_TOPIC.capitalize()  
+    version_id    = ''.join(DOC_LONGVERSION.split('.'))
+    version_major = version_id[0]
+    version_minor = version_id[1]
+    version_micro = version_id[2]
 
     def transform_relative_links(arg):
         """ Replaces internal anchor refs and relative urls with abs path """
@@ -269,27 +268,40 @@ def create_definitions(fullpath):
             transform_body =[]
             for content in section.dd.contents:
                 transform_body.append(str(content))
-            body = h.handle(''.join(transform_body).strip())
+            body = str(h.handle(''.join(transform_body).strip()))
 
             ''' [ Footer ]  '''
             footer = apply_footer(DOC_FULL_URL) # to do
 
             ''' Store all the data '''
             keyword_dict = { 
-                'topic': DOC_TOPIC,
-                'section': DOC_SECTION,
                 'version': DOC_VERSION,
                 'version_full': DOC_LONGVERSION,
+                'topic': DOC_TOPIC,
+                'section': DOC_SECTION,
                 'keyword': keyword,
+                'url' : url,
                 'header': header, 
                 'body': body, 
                 'footer': footer,
-                'url' : url,
             }
             datadump[keyword] = keyword_dict.copy() # faster than update()
-            create_db('DocBot_DB.db')
-            # db_query(query, db_filename, table=db_table, version_id=None, keyword=Noneversion_id=None, topic=None, section=None, keyword=None, )
-            # print('filename: {}, table: {}'.format(db_filename, db_table))
+            # create_db('DocBot_DB.db', db_table)
+            
+            db_query(
+                    'insert', 'DocBot_DB.db', table=db_table, 
+                    version_id=version_id, 
+                    version_major=version_major, 
+                    version_minor=version_minor, 
+                    version_micro=version_micro, 
+                    topic=DOC_TOPIC, 
+                    section=DOC_SECTION, 
+                    keyword=keyword, 
+                    url=url,
+                    header=header, 
+                    body=body, 
+                    footer=footer
+                    )
 
     __init__()
 
