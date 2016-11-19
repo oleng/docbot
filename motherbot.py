@@ -38,10 +38,10 @@ def create_db(query, db_filename, database, table=None, keyword=None,
     '''Create related database and tables'''
     db_is_new = not os.path.exists(db_filename)
     if not db_is_new:
-        print 'Database exists, assume schema does, too.'
+        print('Database exists, assume schema does, too.')
         return
     elif db_is_new:
-        print 'Need to create schema. Creating database.'
+        print('Need to create schema. Creating database.')
         db = sqlite3.connect(db_filename)
         c = db.cursor()
         today = date.today()
