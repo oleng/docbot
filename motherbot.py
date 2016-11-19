@@ -25,7 +25,7 @@ page = 'functions.html'
 fullpath = os.path.join(os.path.expanduser(path), page)
 # descriptions = OrderedDict()
 
-def db_query(query, db_filename, table=None, keyword=None):
+def db_query(query, db_filename, table, keyword):
     """ get DB contents """
     with sqlite3.connect(db_filename) as db:
         c = db.cursor()
@@ -33,8 +33,7 @@ def db_query(query, db_filename, table=None, keyword=None):
         # SELECT
         # ''')
 
-def create_db(query, db_filename, database, table=None, keyword=None, 
-            header=None, body=None, footer=None, url=None, metadata=None):
+def create_db(db_filename, db_table):
     '''Create related database and tables'''
     db_is_new = not os.path.exists(db_filename)
     if not db_is_new:
@@ -49,20 +48,18 @@ def create_db(query, db_filename, database, table=None, keyword=None,
             CREATE TABLE IF NOT EXISTS ?
             (
                 id INTEGER PRIMARY KEY, date_created=? DATE, 
-                keyword=? UNIQUE CHAR(50), header=? TEXT, body=? TEXT, 
-                footer=? TEXT, url=? TEXT, metadata=? TEXT
+                keyword UNIQUE CHAR(50), header TEXT, body TEXT, footer TEXT, 
+                url TEXT, metadata TEXT
             )
-            ''', 
-            database, today, keyword, header, body, footer, url, metadata,
-            )
+            ''', db_table, today)
         db.commit()
     # close connection
     c.close()
     db.close()
 
-def create_definitions(fullpath, datastore=None, **kwargs):
+def create_definitions(fullpath):
     """ This is the main function (class?) to initialize the definitions data 
-    Arguments:
+    Arguments: ==> TODO
         URL path
         datastore: database URL
         function name and query (optional for scraping new docs) 
@@ -189,7 +186,7 @@ def create_definitions(fullpath, datastore=None, **kwargs):
         """ Extract data from page """
         for section in _sections:
             ''' [ Keywords ] for query lookup   '''
-            keyword = section.code.text
+            keyword = str(section.code.text)    # force to string, got expr instead
             
             ''' [ Header ] sections '''
             # replace relative URLs in href to absolute path using regex
@@ -264,15 +261,16 @@ def create_definitions(fullpath, datastore=None, **kwargs):
                     }
             }
             datadump[keyword] = keyword_dict.copy() # faster than update()
-            create_db(
-                database, table, 'keyword'= keyword, 'header' = header, 
-                'body'= body, 'footer'= footer, 'url'= url, 'metadata'= {
-                    'version': DOC_VERSION,
-                    'version_full': DOC_LONGVERSION,
-                    'topic': DOC_TOPIC,
-                    'section': DOC_SECTION,
-                }
-            )
+
+            print('filename: {}, table: {}'.format(db_filename, db_table))
+            create_db(db_filename, db_table)
+            # 'keyword'= keyword, 'header' = header, 'body'= body, 
+            # 'footer'= footer, 'url'= url, 'metadata'= {
+            #         'version': DOC_VERSION,
+            #         'version_full': DOC_LONGVERSION,
+            #         'topic': DOC_TOPIC,
+            #         'section': DOC_SECTION,
+            #         }
 
     __init__()
 
