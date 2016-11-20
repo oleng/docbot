@@ -9,6 +9,7 @@ git:
 import os   # for collecting local data
 import re
 from datetime import date, datetime
+import time
 import pprint as p
 import copy as cp
 import random
@@ -17,12 +18,6 @@ import sqlite3
 from collections import OrderedDict
 from bs4 import BeautifulSoup as BS
 import html2text
-
-''' LOCAL TEST CONFIGS '''
-path = '~/Google Drive/docs/python-3.5.2_docs/library/'
-page = 'datetime.html'
-fullpath = os.path.join(os.path.expanduser(path), page)
-# descriptions = OrderedDict()
 
 def db_query(query, db_filename, table=None, version_id=None, version_major=None, 
             version_minor=None, version_micro=None, topic=None, section=None, 
@@ -61,7 +56,9 @@ def db_query(query, db_filename, table=None, version_id=None, version_major=None
                 ''', datagroup)
             db.commit()
 
-def create_db(db_filename, table):
+def create_db(db_filename, table=None, version_id=None, version_major=None, 
+            version_minor=None, version_micro=None, topic=None, section=None, 
+            keyword=None, url=None, header=None, body=None, footer=None):
     """Create related database and tables"""
     db_is_new = not os.path.exists(db_filename)
     if db_is_new:
@@ -88,11 +85,34 @@ def create_db(db_filename, table):
                         footer TEXT)
                     """)
                 db.commit()
-        return
+                # sleep = 1
+                # time.sleep(sleep)
+                # print('Sleeping for...', sleep)
 
     elif not db_is_new:
         print('Database exists, assume schema does, too.')
-        return
+        with sqlite3.connect(db_filename) as db:
+            c = db.cursor()
+            today = datetime.today()    
+            if table == 'Library':
+                print('Populating {}...'.format(table))
+                datagroup = (
+                    version_id, version_major, version_minor, version_micro, 
+                    topic, section, keyword, url, header, body, footer, today
+                    )
+                c.execute('''
+                    INSERT INTO Library 
+                    (
+                    version_id, version_major, version_minor, version_micro, 
+                    topic, section, keyword, url, header, body, footer, 
+                    date_created
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', datagroup)
+                db.commit()
+                # sleep = 1
+                # time.sleep(sleep)
+                # print('Sleeping for...', sleep)
     
 def create_definitions(fullpath):
     """ This is the main function (class?) to initialize the definitions data 
@@ -240,11 +260,14 @@ def create_definitions(fullpath):
     def section_header(section):
         ''' [ Header ] sections '''
         # replace relative URLs in href to absolute path using regex
-        internal_link = transform_relative_links(section.a['href'])
-        if internal_link is not False:
-            section.a['href'] = internal_link
+        if section.a is not None:
+            internal_link = transform_relative_links(section.a['href'])
+            if internal_link is not False:
+                section.a['href'] = internal_link
             # p.pprint(header_link.__dict__)
-        url = section.a['href']
+            url = section.a['href']
+        else:
+            url = None
         # < Hack > copy untouched section.dd 1st since we're destroying all 
         # spans & still need to manipulate them in body (section.dd) later
         store_dd = cp.copy(section.dd)
@@ -281,7 +304,7 @@ def create_definitions(fullpath):
         transform_body =[]
         for content in section.dd.contents:
             transform_body.append(str(content))
-        body = str(h.handle(''.join(transform_body).strip()))
+        body = str(h.handle(''.join(transform_body))).strip()
         return body
 
     def section_footer(section):
@@ -290,51 +313,72 @@ def create_definitions(fullpath):
         footer = None
         return footer
 
-    def __init__():
-        """ Extract data from page """
-        for section in _sections:
-            if section_keyword(section):
-                keyword = section_keyword(section)
-                # print('got keyword:', keyword)
-                header, url = section_header(section)
-                # print('got header: {}\ngot url: {}'.format(header, url))
-                body = section_body(section)
-                # print('got body:', body)
-                footer = section_footer(section)
-                # print('got footer:', footer, '\n')
-                ''' Store all the data '''
-                keyword_dict = { 
-                    'version': DOC_VERSION,
-                    'version_full': DOC_LONGVERSION,
-                    'topic': DOC_TOPIC,
-                    'section': DOC_SECTION,
-                    'keyword': keyword,
-                    'url' : url,
-                    'header': header, 
-                    'body': body, 
-                    'footer': footer,
-                }
-                # datadump[keyword] = keyword_dict.copy() # faster than update()
-                p.pprint(keyword_dict)
-                # create_db('DocBot_DB.db', db_table)
-                '''
-                db_query(
-                        'insert', 'DocBot_DB.db', table=db_table, 
-                        version_id=version_id, 
-                        version_major=version_major, 
-                        version_minor=version_minor, 
-                        version_micro=version_micro, 
-                        topic=DOC_TOPIC, 
-                        section=DOC_SECTION, 
-                        keyword=keyword, 
-                        url=url,
-                        header=header, 
-                        body=body, 
-                        footer=footer
-                        )'''
-
-    __init__()
-
+    """ Extract data from page """
+    for section in _sections:
+        if section_keyword(section):
+            keyword = section_keyword(section)
+            # print('got keyword:', keyword)
+            header, url = section_header(section)
+            # print('got header: {}\ngot url: {}'.format(header, url))
+            body = section_body(section)
+            # print('got body:', body)
+            footer = section_footer(section)
+            # print('got footer:', footer, '\n')
+            ''' Store all the data '''
+            keyword_dict = { 
+                'version': DOC_VERSION,
+                'version_full': DOC_LONGVERSION,
+                'topic': DOC_TOPIC,
+                'section': DOC_SECTION,
+                'keyword': keyword,
+                'url' : url,
+                'header': header, 
+                'body': body, 
+                # 'footer': footer,
+            }
+            # datadump[keyword] = keyword_dict.copy() # faster than update()
+            print(keyword_dict)
+            create_db('DocBot_DB.db', table=db_table, 
+                    version_id=version_id, 
+                    version_major=version_major, 
+                    version_minor=version_minor, 
+                    version_micro=version_micro, 
+                    topic=DOC_TOPIC, 
+                    section=DOC_SECTION, 
+                    keyword=keyword, 
+                    url=url,
+                    header=header, 
+                    body=body, 
+                    footer=footer
+                    )
+            sleep = 1
+            time.sleep(sleep)
+            print('Sleeping for...', sleep)
+            '''
+            db_query(
+                    'insert', 'DocBot_DB.db', table=db_table, 
+                    version_id=version_id, 
+                    version_major=version_major, 
+                    version_minor=version_minor, 
+                    version_micro=version_micro, 
+                    topic=DOC_TOPIC, 
+                    section=DOC_SECTION, 
+                    keyword=keyword, 
+                    url=url,
+                    header=header, 
+                    body=body, 
+                    footer=footer
+                    )'''
 
 """ Start """
-create_definitions(fullpath)
+
+''' LOCAL TEST CONFIGS '''
+path = os.path.expanduser('~/Google Drive/docs/python-3.5.2_docs/library/')
+# page = 'codecs.html'
+# fullpath = os.path.join(os.path.expanduser(path), page)
+for root, dirs, filenames in os.walk(path):
+    for fname in filenames:
+        fullpath = os.path.join(root, fname)
+        create_definitions(fullpath)
+
+# descriptions = OrderedDict()
