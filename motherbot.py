@@ -20,7 +20,7 @@ import html2text
 
 ''' LOCAL TEST CONFIGS '''
 path = '~/Google Drive/docs/python-3.5.2_docs/library/'
-page = 'datetime.html'
+page = 'collections.abc.html'
 fullpath = os.path.join(os.path.expanduser(path), page)
 # descriptions = OrderedDict()
 
@@ -130,7 +130,7 @@ def create_definitions(fullpath):
     metadata"""
     _version        = re.search(r'VERSION.*\'([\d\.]+)\'', _var_opt)
     _suffix         = re.search(r'SUFFIX.*\'(\.\w+)\'', _var_opt)
-    _part           = re.search(r'\.\./_sources/([\w]+)/([\w]+)\.*', str(_src))
+    _part           = re.search(r'\.\./_sources/([\w]+)/([\w.]+)\.*', str(_src))
     # Initialize variables for metadata
     DOC_ROOT        = 'https://docs.python.org'
     DOC_LONGVERSION =_version.group(1)  # i.e. 3.5.2
@@ -303,14 +303,14 @@ def create_definitions(fullpath):
                     'version_full': DOC_LONGVERSION,
                     'topic': DOC_TOPIC,
                     'section': DOC_SECTION,
-                    # 'keyword': keyword,
+                    'keyword': keyword,
                     'url' : url,
                     'header': header, 
                     'body': body, 
                     'footer': footer,
                 }
                 # datadump[keyword] = keyword_dict.copy() # faster than update()
-                print(keyword_dict)
+                p.pprint(keyword_dict)
                 # create_db('DocBot_DB.db', db_table)
                 '''
                 db_query(
