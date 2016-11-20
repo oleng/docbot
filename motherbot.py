@@ -20,7 +20,7 @@ import html2text
 
 ''' LOCAL TEST CONFIGS '''
 path = '~/Google Drive/docs/python-3.5.2_docs/library/'
-page = 'datetime.html'
+page = 'functions.html'
 fullpath = os.path.join(os.path.expanduser(path), page)
 # descriptions = OrderedDict()
 
@@ -94,6 +94,7 @@ def create_db(db_filename, table):
         print('Database exists, assume schema does, too.')
         return
     
+
 def create_definitions(fullpath):
     """ This is the main function (class?) to initialize the definitions data 
     Arguments: ==> TODO
@@ -214,121 +215,93 @@ def create_definitions(fullpath):
             tag.next_sibling.unwrap()
         return bstag
 
-    def section_keyword(section):
-        ''' [ Keywords ] Evaluate if section contains valid definition '''
-        dt_parent = section.dt.parent
-        while 'id' in section.dt.attrs:
-            keyword = section.dt.attrs['id']
-            # print('id key: {0}'.format(keyword))
-            return keyword
-        if section.dt.code.next_sibling:
-            # print('start looking in class')
-            first = section.dt.code.text
-            second = section.dt.code.next_sibling.string
-            # print('\n>> using first, second:', type(first), type(second))
-            keyword = ''.join('{}{}'.format(first, second))
-            print('class key:', type(keyword), keyword)
-            return keyword
-        else:
-            return False
-
-    def section_header(section):
-        ''' [ Header ] sections '''
-        # replace relative URLs in href to absolute path using regex
-        internal_link = transform_relative_links(section.a['href'])
-        if internal_link is not False:
-            section.a['href'] = internal_link
-            # p.pprint(header_link.__dict__)
-        url = section.a['href']
-        # < Hack > copy untouched section.dd 1st since we're destroying all 
-        # spans & still need to manipulate them in body (section.dd) later
-        store_dd = cp.copy(section.dd)
-        for span in section.find_all('span'):
-            span.unwrap()
-        # put copy back
-        section.dd = store_dd
-
-        # Process header data from dt
-        # < Hack > fix annoying trailing space in <em>class </em> to avoid 
-        # incorrect markdown formatting
-        for em in section.dt.find_all('em', {'class': 'property'}):
-            em.string = '_{}_ '.format(em.text.strip())
-            em.unwrap()
-            # print('em:', em)
-
-        # < Hack > around BS because making it output simple strings is like 
-        # getting your money back from asshole you misjudged a long time ago
-        transform_header = []
-        for content in section.dt.contents:
-            transform_header.append(str(content))
-        # Format header section
-        header = '{0}{1}'.format(
-                markdown_header('h5'),
-                h.handle(''.join(transform_header).strip()),
-                )
-        return header, url
-
-    def section_body(section):
-        ''' [ Body ] section '''
-        # convert internal & relative url links to absolute paths
-        for link in section.dd.select('a[href]'):
-            if link is not None:
-                transform_link = transform_relative_links(link.attrs['href'])
-                link.attrs['href'] = transform_link
-        transform_body =[]
-        for content in section.dd.contents:
-            transform_body.append(str(content))
-        body = str(h.handle(''.join(transform_body).strip()))
-        return body
-
-    def section_footer(section):
-        ''' [ Footer ]  '''
-        # footer = apply_footer(DOC_FULL_URL) # to do
-        footer = None
-        return footer
+    def apply_footer(url):
+        pass
 
     def __init__():
         """ Extract data from page """
         for section in _sections:
-            if section_keyword(section):
-                keyword = section_keyword(section)
-                # print('got keyword:', keyword)
-                header, url = section_header(section)
-                # print('got header: {}\ngot url: {}'.format(header, url))
-                body = section_body(section)
-                # print('got body:', body)
-                footer = section_footer(section)
-                # print('got footer:', footer, '\n')
-                ''' Store all the data '''
-                keyword_dict = { 
-                    'version': DOC_VERSION,
-                    'version_full': DOC_LONGVERSION,
-                    'topic': DOC_TOPIC,
-                    'section': DOC_SECTION,
-                    # 'keyword': keyword,
-                    'url' : url,
-                    'header': header, 
-                    'body': body, 
-                    'footer': footer,
-                }
-                # datadump[keyword] = keyword_dict.copy() # faster than update()
-                print(keyword_dict)
-                # create_db('DocBot_DB.db', db_table)
-                '''
-                db_query(
-                        'insert', 'DocBot_DB.db', table=db_table, 
-                        version_id=version_id, 
-                        version_major=version_major, 
-                        version_minor=version_minor, 
-                        version_micro=version_micro, 
-                        topic=DOC_TOPIC, 
-                        section=DOC_SECTION, 
-                        keyword=keyword, 
-                        url=url,
-                        header=header, 
-                        body=body, 
-                        footer=footer
-                        )'''
+            ''' [ Keywords ] for query lookup   '''
+            keyword = str(section.code.text)    # force to string, got expr instead
+            
+            ''' [ Header ] sections '''
+            # replace relative URLs in href to absolute path using regex
+            internal_link = transform_relative_links(section.a['href'])
+            if internal_link is not False:
+                section.a['href'] = internal_link
+                # p.pprint(header_link.__dict__)
+            url = section.a['href']
+            
+            # < Hack > copy untouched section.dd 1st since we're destroying all 
+            # spans & still need to manipulate them in body (section.dd) later
+            store_dd = cp.copy(section.dd)
+            for span in section.find_all('span'):
+                span.unwrap()
+            # put copy back
+            section.dd = store_dd
+
+            # Process header data from dt
+            # < Hack > fix annoying trailing space in <em>class </em> to avoid 
+            # incorrect markdown formatting
+            for em in section.dt.find_all('em', {'class': 'property'}):
+                next_txt = em.next_sibling.string
+                # unwrap the sibling to avoid double markup
+                em.next_sibling.unwrap()
+            # < Hack > around BS because making it output simple strings is like 
+            # getting your money back from asshole you misjudged a long time ago
+            transform_header = []
+            for content in section.dt.contents:
+                transform_header.append(str(content))
+            # Format header section
+            header = '{0}{1}'.format(
+                    markdown_header('h5'),
+                    h.handle(''.join(transform_header).strip()),
+                    )
+
+            ''' [ Body ] section '''
+            # convert internal & relative url links to absolute paths
+            for link in section.dd.select('a[href]'):
+                if link is not None:
+                    transform_link = transform_relative_links(link.attrs['href'])
+                    link.attrs['href'] = transform_link
+
+            transform_body =[]
+            for content in section.dd.contents:
+                transform_body.append(str(content))
+            body = str(h.handle(''.join(transform_body).strip()))
+
+            ''' [ Footer ]  '''
+            footer = apply_footer(DOC_FULL_URL) # to do
+
+            ''' Store all the data '''
+            keyword_dict = { 
+                'version': DOC_VERSION,
+                'version_full': DOC_LONGVERSION,
+                'topic': DOC_TOPIC,
+                'section': DOC_SECTION,
+                'keyword': keyword,
+                'url' : url,
+                'header': header, 
+                'body': body, 
+                'footer': footer,
+            }
+            datadump[keyword] = keyword_dict.copy() # faster than update()
+            # create_db('DocBot_DB.db', db_table)
+            
+            db_query(
+                    'insert', 'DocBot_DB.db', table=db_table, 
+                    version_id=version_id, 
+                    version_major=version_major, 
+                    version_minor=version_minor, 
+                    version_micro=version_micro, 
+                    topic=DOC_TOPIC, 
+                    section=DOC_SECTION, 
+                    keyword=keyword, 
+                    url=url,
+                    header=header, 
+                    body=body, 
+                    footer=footer
+                    )
 
     __init__()
 
