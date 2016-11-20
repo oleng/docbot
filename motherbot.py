@@ -20,7 +20,7 @@ import html2text
 
 ''' LOCAL TEST CONFIGS '''
 path = '~/Google Drive/docs/python-3.5.2_docs/library/'
-page = 'collections.abc.html'
+page = 'datetime.html'
 fullpath = os.path.join(os.path.expanduser(path), page)
 # descriptions = OrderedDict()
 
@@ -136,7 +136,7 @@ def create_definitions(fullpath):
     DOC_LONGVERSION =_version.group(1)  # i.e. 3.5.2
     DOC_VERSION     = DOC_LONGVERSION[0]    # i.e. 3
     DOC_TOPIC       = _part.group(1)          # i.e. library, references, etc
-    DOC_SECTION     = _part.group(2)        # i.e, functions, exceptions,logging
+    DOC_SECTION     = os.path.splitext(_part.group(2))[0]  # i.e, functions, exceptions,logging
     DOC_SUFFIX      = _suffix.group(1)
     DOC_VER_URL     = '{}/{}/'.format(DOC_ROOT, DOC_VERSION)
     DOC_SECTION_URL = '{}/{}/{}/'.format(DOC_ROOT, DOC_VERSION, DOC_TOPIC)
@@ -217,19 +217,24 @@ def create_definitions(fullpath):
     def section_keyword(section):
         ''' [ Keywords ] Evaluate if section contains valid definition '''
         dt_parent = section.dt.parent
+        keyword = ''
         while 'id' in section.dt.attrs:
             keyword = section.dt.attrs['id']
-            # print('id key: {0}'.format(keyword))
+            # print('\n>>> id key: {0}'.format(str(keyword)))
             return keyword
-        if section.dt.code.next_sibling:
-            # print('start looking in class')
-            first = section.dt.code.text
-            second = section.dt.code.next_sibling.string
-            # print('\n>> using first, second:', type(first), type(second))
-            keyword = ''.join('{}{}'.format(first, second))
-            print('class key:', type(keyword), keyword)
-            return keyword
-        else:
+        try:
+            if section.dt.code.next_sibling is not None:
+                # print('\n>>> start looking in class')
+                # print('\n>>> what are we looking here: next name', section.dt.code.__dict__)
+                first = section.dt.code.text
+                second = section.dt.code.next_sibling.string
+                # print('\n>> using first, second:', type(first), type(second))
+                keyword = ''.join('{}{}'.format(first, second))
+                # print('class key:', type(keyword), keyword)
+                return keyword
+        except AttributeError as error:
+            print(error)
+            print(section.dt.code)
             return False
 
     def section_header(section):
