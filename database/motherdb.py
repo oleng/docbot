@@ -19,7 +19,6 @@ class Library(Base):
     __tablename__ = "Library"
  
     id = Column(Integer, primary_key=True)
-    date_created  = Column(Date)
     version_id  = Column(Integer, nullable=False)
     version_major  = Column(Integer) 
     version_minor  = Column(Integer) 

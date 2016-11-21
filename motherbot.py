@@ -20,14 +20,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from database.motherdb import Library
 
-engine = create_engine('sqlite:///database/docbot.db', echo=True)   # change to False
-# create a Session
-Session = sessionmaker(bind=engine)
-session = Session()
-
 def db_insert(table=None, version_id=None, version_major=None, 
-            version_minor=None, version_micro=None, topic=None, section=None, 
-            keyword=None, url=None, header=None, body=None, footer=None):
+    version_minor=None, version_micro=None, topic=None, section=None, 
+    keyword=None, url=None, header=None, body=None, footer=None):
     """ Update database
     Arguments:
         table:          Database table name
@@ -45,19 +40,8 @@ def db_insert(table=None, version_id=None, version_major=None,
     """
     # Create objects
     # if table == 'Library':
-    doc = Library( 
-        version_id, 
-        version_major, 
-        version_minor, 
-        version_micro, 
-        topic, 
-        section, 
-        keyword, 
-        url, 
-        header, 
-        body, 
-        footer
-        )
+    doc = Library( version_id, version_major, version_minor, version_micro, 
+                    topic, section, keyword, url, header, body, footer)
 
     session.add(doc)
     # commit the record the database
@@ -71,18 +55,15 @@ def create_definitions(fullpath):
         function name and query (optional for scraping new docs) 
 
     Process: start by getting the doc file
-        get the chuncks of sections of definition
-        store to temp datastore?
-        process markup conversion on each of section into parts, 
+        - get the chuncks of sections of definition
+        - process markup conversion on each of section into parts, 
         - keyword : exact syntax
         - header: function syntax & arguments
         - body: function definition
-        then gather metadata into a dict
-        - metadata: section link, h1 header
-        join 3 parts to a single section
-        store to database
+        - gather metadata into a dict: section link, h1 header
+        - join all parts to a single section & store to database
     """
-    ''' Initialize data sources '''
+    # Initialize data from html source
     with open(fullpath, 'r', encoding='utf-8') as doc:
         _doc = BS(doc, 'lxml')
     datadump        = {}
@@ -93,14 +74,15 @@ def create_definitions(fullpath):
     _src            = _doc.body.find(attrs={'class':'this-page-menu'})     
     _var_opt        = ''.join(_doc.head.script.contents)
 
-    """ [ Metadata ] for naming & hyperlinks """
-    """Get Python version from the page (set by javascript in header: 
-    var DOCUMENTATIONS_OPTIONS) and use them for URL variables and other 
-    metadata"""
+    ''' [ Metadata ] for naming & hyperlinks
+    - Get Python version from the html page header, set by javascript in 
+      var DOCUMENTATIONS_OPTIONS
+    - Get other info from url included to use for metadata, db & other variables
+    '''
     _version        = re.search(r'VERSION.*\'([\d\.]+)\'', _var_opt)
     _suffix         = re.search(r'SUFFIX.*\'(\.\w+)\'', _var_opt)
     _part           = re.search(r'\.\./_sources/([\w]+)/([\w.]+)\.*', str(_src))
-    # Initialize variables for metadata
+    # Initialize metadata variables
     DOC_ROOT        = 'https://docs.python.org'
     DOC_LONGVERSION =_version.group(1)  # i.e. 3.5.2
     DOC_VERSION     = DOC_LONGVERSION[0]    # i.e. 3
@@ -114,10 +96,10 @@ def create_definitions(fullpath):
     if _part.group(1) == (DOC_ROOT or fullpath) and DOC_SECTION == 'glossary':
         DOC_TOPIC = 'glossary'
 
-    """ SETUP database (json ?)
-    DB : See DocBot_Schema.sql  
-    """
-    # There's another database for analytic & logging purposes
+    ''' Set database variables 
+    See DocBot_Schema.sql 
+    There's another database for analytic & logging purposes
+    '''
     db_table      = DOC_TOPIC.capitalize()  
     version_id    = ''.join(DOC_LONGVERSION.split('.'))
     version_major = version_id[0]
@@ -184,8 +166,8 @@ def create_definitions(fullpath):
                 # print('class key:', type(keyword), keyword)
                 return keyword
         except AttributeError as error:
-            print(error)
-            print(section.dt.code)
+            print('[ Keywords ]:', error)
+            print('Skipping: cannot find keyword in ', section.dt.code)
             return False
 
     def section_header(section):
@@ -251,7 +233,7 @@ def create_definitions(fullpath):
         footer = None
         return footer
 
-    """ Extract data from page """
+    ''' Extract data from page '''
     for section in _sections:
         if section_keyword(section):
             keyword = section_keyword(section)
@@ -291,17 +273,18 @@ def create_definitions(fullpath):
                     footer=footer
                     )
 
-""" Start """
+engine = create_engine('sqlite:///database/docbot.db', echo=True)
+# create a Session
+Session = sessionmaker(bind=engine)
+session = Session()
 
 ''' LOCAL TEST CONFIGS '''
 path = os.path.expanduser('~/Google Drive/docs/python-3.5.2_docs/library/')
 # page = 'datetime.html'
 # fullpath = os.path.join(os.path.expanduser(path), page)
-# create_definitions(fullpath)
 
 for root, dirs, filenames in os.walk(path):
     for fname in filenames:
         fullpath = os.path.join(root, fname)
         create_definitions(fullpath)
 
-# descriptions = OrderedDict()
