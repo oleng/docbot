@@ -18,6 +18,7 @@ import sqlite3
 from collections import OrderedDict
 from bs4 import BeautifulSoup as BS
 import html2text
+import SQLAlchemy
 
 def db_query(query, db_filename, table=None, version_id=None, version_major=None, 
             version_minor=None, version_micro=None, topic=None, section=None, 
@@ -173,7 +174,7 @@ def create_definitions(fullpath):
     version_id    = ''.join(DOC_LONGVERSION.split('.'))
     version_major = version_id[0]
     version_minor = version_id[1]
-    version_micro = version_id[2]
+    version_micro = version_id[2:]
 
     def transform_relative_links(arg):
         """ Replaces internal anchor refs and relative urls with abs path """
@@ -213,27 +214,6 @@ def create_definitions(fullpath):
                     'h5': '##### ', 'h6': '###### '}
         return header[arg]
 
-    def markdown_note_changes(arg):
-        """ < Hack > change some notes tagged with css classes with Markdown
-        before passed to html2text and get destroyed """
-        identifiers = {
-                'versionchanged': 'blockquote', 
-                'versionadded': 'blockquote', 
-                'versionmodified': 'em', 
-                'admonition-title': 'b',
-                'first': 'blockquote', 'last': 'blockquote',
-                }
-        return identifiers[arg]
-
-    def fix_space_in_html(bstag, htmltag, css):
-        """ Fix annoying trailing space in <em>class </em> to avoid
-        incorrect markdown formatting"""
-        for tag in bstag.find_all(htmltag, {'class': css}):
-            next_txt = tag.next_sibling.string
-            # unwrap the sibling to avoid double markup
-            tag.next_sibling.unwrap()
-        return bstag
-
     def section_keyword(section):
         ''' [ Keywords ] Evaluate if section contains valid definition '''
         dt_parent = section.dt.parent
@@ -262,8 +242,7 @@ def create_definitions(fullpath):
         # replace relative URLs in href to absolute path using regex
         if section.a is not None:
             internal_link = transform_relative_links(section.a['href'])
-            if internal_link is not False:
-                section.a['href'] = internal_link
+            section.a['href'] = internal_link
             # p.pprint(header_link.__dict__)
             url = section.a['href']
         else:
@@ -275,7 +254,6 @@ def create_definitions(fullpath):
             span.unwrap()
         # put copy back
         section.dd = store_dd
-        # Process header data from dt
         # < Hack > fix annoying trailing space in <em>class </em> to avoid 
         # incorrect markdown formatting
         for em in section.dt.find_all('em', {'class': 'property'}):
@@ -286,12 +264,17 @@ def create_definitions(fullpath):
         # getting your money back from asshole you misjudged a long time ago
         transform_header = []
         for content in section.dt.contents:
+            # print('content section.dt:', content)
             transform_header.append(str(content))
-        # Format header section
-        header = '{0}{1}'.format(
-                markdown_header('h5'),
+        # Add horizontal rule below header
+        # Format header section, add opening link tag. 
+        tmp_header = '{0}[{1}'.format( markdown_header('h4'),
                 h.handle(''.join(transform_header).strip()),
                 )
+        # remove double link tag
+        newtmp = tmp_header.replace(".``", ".")
+        # string is immutable
+        header = '{0}{1}'.format(newtmp.replace('[¶', ''), '-----\n')
         return header, url
 
     def section_body(section):
@@ -319,7 +302,7 @@ def create_definitions(fullpath):
             keyword = section_keyword(section)
             # print('got keyword:', keyword)
             header, url = section_header(section)
-            # print('got header: {}\ngot url: {}'.format(header, url))
+            # print('got header: {}got url: {}'.format(header, url))
             body = section_body(section)
             # print('got body:', body)
             footer = section_footer(section)
@@ -328,17 +311,18 @@ def create_definitions(fullpath):
             keyword_dict = { 
                 'version': DOC_VERSION,
                 'version_full': DOC_LONGVERSION,
+                'version_micro': version_micro,
                 'topic': DOC_TOPIC,
                 'section': DOC_SECTION,
                 'keyword': keyword,
                 'url' : url,
                 'header': header, 
                 'body': body, 
-                # 'footer': footer,
+                'footer': footer,
             }
             # datadump[keyword] = keyword_dict.copy() # faster than update()
-            print(keyword_dict)
-            create_db('DocBot_DB.db', table=db_table, 
+            # print(keyword_dict)
+            create_db('DocBot.db', table=db_table, 
                     version_id=version_id, 
                     version_major=version_major, 
                     version_minor=version_minor, 
@@ -351,9 +335,9 @@ def create_definitions(fullpath):
                     body=body, 
                     footer=footer
                     )
-            sleep = 1
-            time.sleep(sleep)
-            print('Sleeping for...', sleep)
+            # sleep = 1
+            # time.sleep(sleep)
+            # print('Sleeping for...', sleep)
             '''
             db_query(
                     'insert', 'DocBot_DB.db', table=db_table, 
@@ -369,13 +353,16 @@ def create_definitions(fullpath):
                     body=body, 
                     footer=footer
                     )'''
+    print('Finished creating database')
 
 """ Start """
 
 ''' LOCAL TEST CONFIGS '''
 path = os.path.expanduser('~/Google Drive/docs/python-3.5.2_docs/library/')
-# page = 'codecs.html'
+# page = 'datetime.html'
 # fullpath = os.path.join(os.path.expanduser(path), page)
+# create_definitions(fullpath)
+
 for root, dirs, filenames in os.walk(path):
     for fname in filenames:
         fullpath = os.path.join(root, fname)
