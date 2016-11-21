@@ -6,15 +6,13 @@ version:    v.0.1
 git:   
 
 """
-import os   # for collecting local data paths
+import os
 import re
 from datetime import date, datetime
-import time
-import pprint as p
-import copy as cp
-import random
-import simplejson as json
-import sqlite3
+import time                             # remove later
+import pprint as p                      # remove later
+import copy as cp                       # to copy section
+# import simplejson as json             # json store for sending data, new idea
 from collections import OrderedDict
 from bs4 import BeautifulSoup as BS
 import html2text
