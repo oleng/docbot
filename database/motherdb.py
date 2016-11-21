@@ -10,7 +10,7 @@ from sqlalchemy import Column, Date, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref
  
-engine = create_engine('sqlite:///database/DocBot.db', echo=False)
+engine = create_engine('sqlite:///database/docbot.db', echo=True)
 Base = declarative_base()
  
 ########################################################################
@@ -32,7 +32,7 @@ class Library(Base):
     body = Column(String)
     footer = Column(String)
  
-    def __init__(version_id, version_major, version_minor, version_micro, 
+    def __init__(self, version_id, version_major, version_minor, version_micro, 
                 topic, section, keyword, url, header, body, footer):
         self.version_id = version_id
         self.version_major = version_major
@@ -44,7 +44,7 @@ class Library(Base):
         self.url = url
         self.header = header
         self.body = body
-        self.footer = footer 
+        self.footer = footer
 ########################################################################
  
 # create tables

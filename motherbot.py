@@ -18,9 +18,51 @@ from bs4 import BeautifulSoup as BS
 import html2text
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from database import motherdb
+from database.motherdb import Library
 
-    
+engine = create_engine('sqlite:///database/docbot.db', echo=True)   # change to False
+# create a Session
+Session = sessionmaker(bind=engine)
+session = Session()
+
+def db_insert(table=None, version_id=None, version_major=None, 
+            version_minor=None, version_micro=None, topic=None, section=None, 
+            keyword=None, url=None, header=None, body=None, footer=None):
+    """ Update database
+    Arguments:
+        table:          Database table name
+        version_id:     Int, main variable for user <version> query
+        version_major:  Int(major).x.x, i.e. 3.5.2, 2.7.12
+        version_minor:  x.int(minor).x
+        version_micro:  x.x.int(micro)
+        topic:          Library/Activity (Python Doc **Section** & User table)
+        section:        Python doc page name, based on module name
+        keyword:        Main variable for user <syntax> query
+        url:            Permalink to Python doc syntax definition 
+        header:         Syntax & argument part
+        body:           Definition part
+        footer:         Related document URLs & docbot information links
+    """
+    # Create objects
+    # if table == 'Library':
+    doc = Library( 
+        version_id, 
+        version_major, 
+        version_minor, 
+        version_micro, 
+        topic, 
+        section, 
+        keyword, 
+        url, 
+        header, 
+        body, 
+        footer
+        )
+
+    session.add(doc)
+    # commit the record the database
+    session.commit()
+
 def create_definitions(fullpath):
     """ This is the main function to initialize the definitions data 
     Arguments: ==> TODO
@@ -235,7 +277,7 @@ def create_definitions(fullpath):
             }
             # datadump[keyword] = keyword_dict.copy() # faster than update()
             # print(keyword_dict)
-            create_db('DocBot.db', table=db_table, 
+            db_insert(table=db_table, 
                     version_id=version_id, 
                     version_major=version_major, 
                     version_minor=version_minor, 
@@ -248,21 +290,6 @@ def create_definitions(fullpath):
                     body=body, 
                     footer=footer
                     )
-            '''
-            db_query(
-                    'insert', 'DocBot_DB.db', table=db_table, 
-                    version_id=version_id, 
-                    version_major=version_major, 
-                    version_minor=version_minor, 
-                    version_micro=version_micro, 
-                    topic=DOC_TOPIC, 
-                    section=DOC_SECTION, 
-                    keyword=keyword, 
-                    url=url,
-                    header=header, 
-                    body=body, 
-                    footer=footer
-                    )'''
 
 """ Start """
 
