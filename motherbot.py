@@ -6,7 +6,7 @@ version:    v.0.1
 git:   
 
 """
-import os   # for collecting local data
+import os   # for collecting local data paths
 import re
 from datetime import date, datetime
 import time
@@ -18,105 +18,13 @@ import sqlite3
 from collections import OrderedDict
 from bs4 import BeautifulSoup as BS
 import html2text
-import SQLAlchemy
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from database import motherdb
 
-def db_query(query, db_filename, table=None, version_id=None, version_major=None, 
-            version_minor=None, version_micro=None, topic=None, section=None, 
-            keyword=None, url=None, header=None, body=None, footer=None):
-    """ update & get DB contents 
-    See for variable in SQL params: docs/library/sqlite3.html
-        http://stackoverflow.com/a/1010804/6882768
-        http://stackoverflow.com/a/25387570/6882768 
-    Arguments:
-        query: get/insert 
-        db_filename: to specify which database to access
-        kwargs to specify 
-        >>> kwargs to variables (change this later)
-        # database: activity
-        date_query = kwargs.get('date_query')
-        username = kwargs.get('username')
-        freq = kwargs.get('frequency')
-    """
-    with sqlite3.connect(db_filename) as db:
-        c = db.cursor()
-        today = datetime.today()    
-        if query == 'insert' and table == 'Library':
-            print('Populating {}...'.format(table))
-            datagroup = (
-                version_id, version_major, version_minor, version_micro, 
-                topic, section, keyword, url, header, body, footer, today
-                )
-            c.execute('''
-                INSERT INTO Library 
-                (
-                version_id, version_major, version_minor, version_micro, 
-                topic, section, keyword, url, header, body, footer, 
-                date_created
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', datagroup)
-            db.commit()
-
-def create_db(db_filename, table=None, version_id=None, version_major=None, 
-            version_minor=None, version_micro=None, topic=None, section=None, 
-            keyword=None, url=None, header=None, body=None, footer=None):
-    """Create related database and tables"""
-    db_is_new = not os.path.exists(db_filename)
-    if db_is_new:
-        print('Need to create schema. Creating database.')
-        with sqlite3.connect(db_filename) as db:
-            c = db.cursor()
-            today = datetime.today()
-            if table == 'Library':
-                print('Creating table {}...'.format(table))        
-                c.execute("""
-                    CREATE TABLE IF NOT EXISTS Library (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                        date_created DATE, 
-                        version_id INTEGER IDENTITY, 
-                        version_major INTEGER, 
-                        version_minor INTEGER, 
-                        version_micro INTEGER,
-                        topic CHAR(25), 
-                        section CHAR(25), 
-                        keyword CHAR(25), 
-                        url TEXT, 
-                        header TEXT, 
-                        body TEXT, 
-                        footer TEXT)
-                    """)
-                db.commit()
-                # sleep = 1
-                # time.sleep(sleep)
-                # print('Sleeping for...', sleep)
-
-    elif not db_is_new:
-        print('Database exists, assume schema does, too.')
-        with sqlite3.connect(db_filename) as db:
-            c = db.cursor()
-            today = datetime.today()    
-            if table == 'Library':
-                print('Populating {}...'.format(table))
-                datagroup = (
-                    version_id, version_major, version_minor, version_micro, 
-                    topic, section, keyword, url, header, body, footer, today
-                    )
-                c.execute('''
-                    INSERT INTO Library 
-                    (
-                    version_id, version_major, version_minor, version_micro, 
-                    topic, section, keyword, url, header, body, footer, 
-                    date_created
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', datagroup)
-                db.commit()
-                # sleep = 1
-                # time.sleep(sleep)
-                # print('Sleeping for...', sleep)
     
 def create_definitions(fullpath):
-    """ This is the main function (class?) to initialize the definitions data 
+    """ This is the main function to initialize the definitions data 
     Arguments: ==> TODO
         URL path
         datastore: database URL
@@ -177,7 +85,11 @@ def create_definitions(fullpath):
     version_micro = version_id[2:]
 
     def transform_relative_links(arg):
-        """ Replaces internal anchor refs and relative urls with abs path """
+        """ Replaces internal anchor refs and relative urls with absolute path
+        group 1: same page href anchor, 
+        group 2: links to different page in the same Python doc section 
+        group 3: links to different sections
+        """
         try:
             def subpattern(match):
                 if match.group(1):
@@ -195,9 +107,6 @@ def create_definitions(fullpath):
                     return r'{}{}'.format(DOC_VER_URL, strings)
                 else:
                     print('{} not found :(( ', match)
-            # group 1: same page ref anchor, 
-            # group 2: pages in same part of doc, 
-            # group 3: pages in different parts of doc
             urlsub = re.sub(
               r'^(#[\w\.]+)|^([\w]+\.htm.[#\w.]+)|^(\.{2}/[\w+|/+]*\.htm.#.*)', 
               subpattern, arg
@@ -209,13 +118,15 @@ def create_definitions(fullpath):
             return False
 
     def markdown_header(arg):
-        """ For marking up headers in definition headers """
+        """ HTML to Markdown headers """
         header = {'h1': '# ', 'h2': '## ', 'h3': '### ', 'h4': '#### ', 
                     'h5': '##### ', 'h6': '###### '}
         return header[arg]
 
     def section_keyword(section):
-        ''' [ Keywords ] Evaluate if section contains valid definition '''
+        ''' [ Keywords ] 
+        - Evaluate if section contains valid definition & extract the strings
+        '''
         dt_parent = section.dt.parent
         keyword = ''
         while 'id' in section.dt.attrs:
@@ -238,8 +149,10 @@ def create_definitions(fullpath):
             return False
 
     def section_header(section):
-        ''' [ Header ] sections '''
-        # replace relative URLs in href to absolute path using regex
+        ''' [ Header ] sections 
+        - Feed (if exists) relative URLs to transform_relative_links()
+        - Format html to markdown,
+        '''
         if section.a is not None:
             internal_link = transform_relative_links(section.a['href'])
             section.a['href'] = internal_link
@@ -252,8 +165,7 @@ def create_definitions(fullpath):
         store_dd = cp.copy(section.dd)
         for span in section.find_all('span'):
             span.unwrap()
-        # put copy back
-        section.dd = store_dd
+        section.dd = store_dd   # put copy back
         # < Hack > fix annoying trailing space in <em>class </em> to avoid 
         # incorrect markdown formatting
         for em in section.dt.find_all('em', {'class': 'property'}):
@@ -271,15 +183,17 @@ def create_definitions(fullpath):
         tmp_header = '{0}[{1}'.format( markdown_header('h4'),
                 h.handle(''.join(transform_header).strip()),
                 )
-        # remove double link tag
+        # remove double markdown link tag
         newtmp = tmp_header.replace(".``", ".")
         # string is immutable
         header = '{0}{1}'.format(newtmp.replace('[¶', ''), '-----\n')
         return header, url
 
     def section_body(section):
-        ''' [ Body ] section '''
-        # convert internal & relative url links to absolute paths
+        ''' [ Body ] section 
+        - Format the definition in Header
+        - Convert internal & relative url links to absolute paths
+        '''
         for link in section.dd.select('a[href]'):
             if link is not None:
                 transform_link = transform_relative_links(link.attrs['href'])
@@ -291,8 +205,9 @@ def create_definitions(fullpath):
         return body
 
     def section_footer(section):
-        ''' [ Footer ]  '''
-        # footer = apply_footer(DOC_FULL_URL) # to do
+        ''' [ Footer ]
+        - Include infos in docbots replies
+        '''
         footer = None
         return footer
 
@@ -335,9 +250,6 @@ def create_definitions(fullpath):
                     body=body, 
                     footer=footer
                     )
-            # sleep = 1
-            # time.sleep(sleep)
-            # print('Sleeping for...', sleep)
             '''
             db_query(
                     'insert', 'DocBot_DB.db', table=db_table, 
@@ -353,7 +265,6 @@ def create_definitions(fullpath):
                     body=body, 
                     footer=footer
                     )'''
-    print('Finished creating database')
 
 """ Start """
 
