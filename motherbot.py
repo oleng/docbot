@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 # load logging config in env variable
 logging.config.dictConfig(ast.literal_eval(os.getenv('LOG_CFG')))
 
-engine = create_engine('sqlite:///database/docbot.db', echo=True)
+engine = create_engine('sqlite:///docbot.db', echo=True)
 Session = sessionmaker(bind=engine)
 session = Session()
 
@@ -227,7 +227,7 @@ def build_definitions(fullpath):
 
     ''' Extract data from page '''
     for section in _sections:
-        if section_keyword(section):
+        if create_keyword(section):
             keyword = create_keyword(section)
             header, url = create_header(section)
             body = create_body(section)
@@ -250,12 +250,13 @@ def build_definitions(fullpath):
             '''
             doc = Library( 
                     version_id, version_major, version_minor, version_micro, 
-                    topic, section, keyword, url, header, body, footer)
+                    DOC_TOPIC, DOC_SECTION, keyword, url, header, body, footer)
             log.info('Adding to database: {}'.format(doc))
-            # buffer instead of straight commit?
+            # is this safe?
             session.add(doc)
-            # commit the record the database
-            session.commit()
+            session.flush()
+    # commit the record the database
+    session.commit()
 
 
 for root, dirs, filenames in os.walk(path):
