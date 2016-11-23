@@ -6,11 +6,12 @@ git:
 
 """
 from sqlalchemy import create_engine
-from sqlalchemy import Column, Date, Integer, String
+from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref
- 
-engine = create_engine('sqlite:///database/docbot.db', echo=True)
+from datetime import date, datetime
+
+engine = create_engine('sqlite:///docbot.db', echo=True)
 Base = declarative_base()
  
 ########################################################################
@@ -45,6 +46,33 @@ class Library(Base):
         self.body = body
         self.footer = footer
 ########################################################################
+
+########################################################################
+class RedditActivity(Base):
+    """Main table"""
+    __tablename__ = "RedditActivity"
+ 
+    post_id = Column(Integer, primary_key=True) 
+    query  = Column(String, nullable=False)
+    username  = Column(String(100)) 
+    date_time  = Column(DateTime, default=datetime.utcnow)
+    permalink  = Column(String(255))
+    thread = Column(String(255))
+    replied = Column(DateTime, default=datetime.utcnow)
+ 
+    def __init__(self, post_id, query, username, thread_id, 
+                topic, section, keyword, url, header, body, footer):
+        self.post_id = post_id
+        self.query = query
+        self.username = username
+        self.date_time = date_time
+        self.permalink = permalink
+        self.thread = thread
+        self.replied = replied
+
+########################################################################
  
 # create tables
 Base.metadata.create_all(engine)
+
+
