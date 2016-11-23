@@ -9,45 +9,38 @@ git:
 import os
 import re
 from datetime import date, datetime
-import time                             # remove later
-import pprint as p                      # remove later
+import logging, logging.config
+import ast
 import copy as cp                       # to copy section
 # import simplejson as json             # json store for sending data, new idea
-from collections import OrderedDict
 from bs4 import BeautifulSoup as BS
 import html2text
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from database.motherdb import Library
+from docdb import Library
+
+log = logging.getLogger(__name__)
+# load logging config in env variable
+logging.config.dictConfig(ast.literal_eval(os.getenv('LOG_CFG')))
+
+engine = create_engine('sqlite:///database/docbot.db', echo=True)
+Session = sessionmaker(bind=engine)
+session = Session()
+
+''' LOCAL TEST CONFIGS '''
+path = os.path.expanduser('~/Google Drive/docs/python-2.7.12_docs/library/')
+# page = 'datetime.html'
+# fullpath = os.path.join(os.path.expanduser(path), page)
 
 def db_insert(table=None, version_id=None, version_major=None, 
     version_minor=None, version_micro=None, topic=None, section=None, 
     keyword=None, url=None, header=None, body=None, footer=None):
-    """ Update database
-    Arguments:
-        table:          Database table name
-        version_id:     Int, main variable for user <version> query
-        version_major:  Int(major).x.x, i.e. 3.5.2, 2.7.12
-        version_minor:  x.int(minor).x
-        version_micro:  x.x.int(micro)
-        topic:          Library/Activity (Python Doc **Section** & User table)
-        section:        Python doc page name, based on module name
-        keyword:        Main variable for user <syntax> query
-        url:            Permalink to Python doc syntax definition 
-        header:         Syntax & argument part
-        body:           Definition part
-        footer:         Related document URLs & docbot information links
-    """
+    pass
     # Create objects
     # if table == 'Library':
-    doc = Library( version_id, version_major, version_minor, version_micro, 
-                    topic, section, keyword, url, header, body, footer)
 
-    session.add(doc)
-    # commit the record the database
-    session.commit()
 
-def create_definitions(fullpath):
+def build_definitions(fullpath):
     """ This is the main function to initialize the definitions data 
     Arguments: ==> TODO
         URL path
@@ -70,7 +63,8 @@ def create_definitions(fullpath):
     h               = html2text.HTML2Text()
     h.ignore_links  = False
     _sections       = _doc.find_all('dl')
-    # in <ul class="this-page-menu"> <...><li><a href="../_sources/library/functions.txt"
+    #   in <ul class="this-page-menu"> <...>
+    #       <li><a href="../_sources/library/functions.txt"
     _src            = _doc.body.find(attrs={'class':'this-page-menu'})     
     _var_opt        = ''.join(_doc.head.script.contents)
 
@@ -87,7 +81,7 @@ def create_definitions(fullpath):
     DOC_LONGVERSION =_version.group(1)  # i.e. 3.5.2
     DOC_VERSION     = DOC_LONGVERSION[0]    # i.e. 3
     DOC_TOPIC       = _part.group(1)          # i.e. library, references, etc
-    DOC_SECTION     = os.path.splitext(_part.group(2))[0]  # i.e, functions, exceptions,logging
+    DOC_SECTION     = os.path.splitext(_part.group(2))[0]  # i.e, functions, etc
     DOC_SUFFIX      = _suffix.group(1)
     DOC_VER_URL     = '{}/{}/'.format(DOC_ROOT, DOC_VERSION)
     DOC_SECTION_URL = '{}/{}/{}/'.format(DOC_ROOT, DOC_VERSION, DOC_TOPIC)
@@ -96,9 +90,8 @@ def create_definitions(fullpath):
     if _part.group(1) == (DOC_ROOT or fullpath) and DOC_SECTION == 'glossary':
         DOC_TOPIC = 'glossary'
 
-    ''' Set database variables 
+    ''' Set database variables, TODO for analytic & logging purposes
     See DocBot_Schema.sql 
-    There's another database for analytic & logging purposes
     '''
     db_table      = DOC_TOPIC.capitalize()  
     version_id    = ''.join(DOC_LONGVERSION.split('.'))
@@ -122,9 +115,9 @@ def create_definitions(fullpath):
                     strings = match.group(3)[
                                 (match.start(3)+3): match.end()
                                 ]
-                    ''' This match.span print basically just for reminder '''
-                    # print('<re matched group 3> : {} : {}{}'
-                    #     .format(match.span(3), DOC_VER_URL, strings)
+                    ''' This match.span example basically just for reminder '''
+                    #   debug(['<re matched group 3> : {} : {}{}'
+                    #     .format(match.span(3), DOC_VER_URL, strings])
                     #     )
                     return r'{}{}'.format(DOC_VER_URL, strings)
                 else:
@@ -136,7 +129,8 @@ def create_definitions(fullpath):
             return urlsub
         # This might be the wrong way to catch exception
         except re.error as exception:
-            print(exception)
+            log.error('URL cannot be replace with regex: {}'.format(exception), 
+                exc_info=True)
             return False
 
     def markdown_header(arg):
@@ -145,7 +139,7 @@ def create_definitions(fullpath):
                     'h5': '##### ', 'h6': '###### '}
         return header[arg]
 
-    def section_keyword(section):
+    def create_keyword(section):
         ''' [ Keywords ] 
         - Evaluate if section contains valid definition & extract the strings
         '''
@@ -153,24 +147,21 @@ def create_definitions(fullpath):
         keyword = ''
         while 'id' in section.dt.attrs:
             keyword = section.dt.attrs['id']
-            # print('\n>>> id key: {0}'.format(str(keyword)))
+            # log.debug('>>> id key: {0}'.format(str(keyword)))
             return keyword
         try:
             if section.dt.code.next_sibling is not None:
-                # print('\n>>> start looking in class')
-                # print('\n>>> what are we looking here: next name', section.dt.code.__dict__)
+                # log.debug('Looking in code css class')
                 first = section.dt.code.text
                 second = section.dt.code.next_sibling.string
-                # print('\n>> using first, second:', type(first), type(second))
                 keyword = ''.join('{}{}'.format(first, second))
-                # print('class key:', type(keyword), keyword)
                 return keyword
         except AttributeError as error:
-            print('[ Keywords ]:', error)
-            print('Skipping: cannot find keyword in ', section.dt.code)
+            log.error('[ Keywords error]: {}'.format(error))
+            log.warn("Skipping: can't find keyword in {}".format(section.dt.code))
             return False
 
-    def section_header(section):
+    def create_header(section):
         ''' [ Header ] sections 
         - Feed (if exists) relative URLs to transform_relative_links()
         - Format html to markdown,
@@ -178,7 +169,6 @@ def create_definitions(fullpath):
         if section.a is not None:
             internal_link = transform_relative_links(section.a['href'])
             section.a['href'] = internal_link
-            # p.pprint(header_link.__dict__)
             url = section.a['href']
         else:
             url = None
@@ -193,12 +183,10 @@ def create_definitions(fullpath):
         for em in section.dt.find_all('em', {'class': 'property'}):
             em.string = '_{}_ '.format(em.text.strip())
             em.unwrap()
-            # print('em:', em)
         # < Hack > around BS because making it output simple strings is like 
         # getting your money back from asshole you misjudged a long time ago
         transform_header = []
         for content in section.dt.contents:
-            # print('content section.dt:', content)
             transform_header.append(str(content))
         # Add horizontal rule below header
         # Format header section, add opening link tag. 
@@ -211,7 +199,7 @@ def create_definitions(fullpath):
         header = '{0}{1}'.format(newtmp.replace('[¶', ''), '-----\n')
         return header, url
 
-    def section_body(section):
+    def create_body(section):
         ''' [ Body ] section 
         - Format the definition in Header
         - Convert internal & relative url links to absolute paths
@@ -226,65 +214,53 @@ def create_definitions(fullpath):
         body = str(h.handle(''.join(transform_body))).strip()
         return body
 
-    def section_footer(section):
+    def create_footer(section):
         ''' [ Footer ]
         - Include infos in docbots replies
         '''
+        # readme_link = link
+        # sub_docbot = sub
+        # '\n\n`>>>` [README]({0}) |  `>>>` [/r/DocBot/]({1}'.format(
+            # readme_link, sub_docbot)
         footer = None
         return footer
 
     ''' Extract data from page '''
     for section in _sections:
         if section_keyword(section):
-            keyword = section_keyword(section)
-            # print('got keyword:', keyword)
-            header, url = section_header(section)
-            # print('got header: {}got url: {}'.format(header, url))
-            body = section_body(section)
-            # print('got body:', body)
-            footer = section_footer(section)
-            # print('got footer:', footer, '\n')
-            ''' Store all the data '''
-            keyword_dict = { 
-                'version': DOC_VERSION,
-                'version_full': DOC_LONGVERSION,
-                'version_micro': version_micro,
-                'topic': DOC_TOPIC,
-                'section': DOC_SECTION,
-                'keyword': keyword,
-                'url' : url,
-                'header': header, 
-                'body': body, 
-                'footer': footer,
-            }
-            # datadump[keyword] = keyword_dict.copy() # faster than update()
-            # print(keyword_dict)
-            db_insert(table=db_table, 
-                    version_id=version_id, 
-                    version_major=version_major, 
-                    version_minor=version_minor, 
-                    version_micro=version_micro, 
-                    topic=DOC_TOPIC, 
-                    section=DOC_SECTION, 
-                    keyword=keyword, 
-                    url=url,
-                    header=header, 
-                    body=body, 
-                    footer=footer
-                    )
+            keyword = create_keyword(section)
+            header, url = create_header(section)
+            body = create_body(section)
+            footer = create_footer(section)
 
-engine = create_engine('sqlite:///database/docbot.db', echo=True)
-# create a Session
-Session = sessionmaker(bind=engine)
-session = Session()
+            ''' Store all the data
+            Arguments:
+                table:          Database table name
+                version_id:     Int, main variable for user <version> query
+                version_major:  Int(major).x.x, i.e. 3.5.2, 2.7.12
+                version_minor:  x.int(minor).x
+                version_micro:  x.x.int(micro)
+                topic:          Library (Python Doc **Section**)
+                section:        Python doc page name, based on module name
+                keyword:        Main variable for user <syntax> query
+                url:            Permalink to Python doc syntax definition 
+                header:         Syntax & argument part
+                body:           Definition part
+                footer:         Related document URLs & docbot information links
+            '''
+            doc = Library( 
+                    version_id, version_major, version_minor, version_micro, 
+                    topic, section, keyword, url, header, body, footer)
+            log.info('Adding to database: {}'.format(doc))
+            # buffer instead of straight commit?
+            session.add(doc)
+            # commit the record the database
+            session.commit()
 
-''' LOCAL TEST CONFIGS '''
-path = os.path.expanduser('~/Google Drive/docs/python-3.5.2_docs/library/')
-# page = 'datetime.html'
-# fullpath = os.path.join(os.path.expanduser(path), page)
 
 for root, dirs, filenames in os.walk(path):
     for fname in filenames:
         fullpath = os.path.join(root, fname)
-        create_definitions(fullpath)
+        log.info('Start importing definitions', exc_info=True)
+        build_definitions(fullpath)
 
