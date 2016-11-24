@@ -2,7 +2,7 @@
 """"
 [MotherBot] Syntax/docbot by /u/num8lock
 Desc:       Model (logic module)
-version:    v.0.1
+version:    v.0.2
 git:   
 
 """
