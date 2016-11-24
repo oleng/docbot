@@ -2,7 +2,7 @@
 """"
 [SyntaxBot] Reddit Python docbot by /u/num8lock
 Desc:       reddit module
-version:    v.0.1
+version:    v.0.2
 git:        
 Notes:      praw4 (see requirements.txt)
             [Heroku] uses env variables for storing OAuth secret key and
@@ -10,148 +10,184 @@ Notes:      praw4 (see requirements.txt)
 Acknowledgment:
             Codes based on many reddit bot creators /u/redditdev
             and helps from /r/learnpython.
-
+            Thanks to:
 """
-# import motherbot
 import os
-import time
 import re
+import time
 from datetime import datetime
+import logging
+import logging.config
 import praw
 import ast
-import pprint as pr
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 ''' CONFIGS '''
 # Retrieve (Heroku) env private variables
 ua = useragent = 'Python Syntax help bot for reddit v.0.1 (by /u/num8lock)'
-id = os.environ['syntaxbot_app_id']
-secret = os.environ['syntaxbot_app_secret']
-username = os.environ['syntaxbot_username']
-password = os.environ['syntaxbot_password']
+appid = os.getenv('syntaxbot_app_id')
+secret = os.getenv('syntaxbot_app_secret')
+botlogin = os.getenv('syntaxbot_username')
+password = os.getenv('syntaxbot_password')
 # Reddit related variables
-botname = 'DocBot!'
+botcommand = 'SyntaxBot!'
 subreddit = 'bottest'
+
 # regex pattern for capturing user commands. Need to have everything 
 # captured between the identifiers
-pattern = re.compile(r'''
-    (?P<bot>Doc!|DocBot!|SyntaxBot!) (?P<command>lookup|search) 
-    (?P<keywords>[\'|\"]{3}(.*)[\'|\"]{3})''', re.IGNORECASE)
-identifiers = '\"\''
-# add logging. make it both logs to file.log & output to console stdouput
-replied_list = ['d9x043o']
+pattern = re.compile(r"""(?P<bot>Doc!|DocBot!|SyntaxBot!)\s
+    (?P<command>find|lookup|search|get)\s
+    (?P<keywords>['"]{3}(.*)['"]{3})""", re.X)
 
-def login():
-    ''' log connection '''
-    print('Establishing connection...')
-    ''' praw4 only needs the first 3 for read-only mode '''
-    r = praw.Reddit(user_agent=ua, client_id=id, client_secret=secret, 
-        username=username,
-        password=password
-        )
-    print('Connected. Starting bot activity')
-    return r
+def log_as_replied(comment):
+    # check_bot_comments()
+    pass
 
-def test_break():
-    userinput = input("Just testing, ctrl+c to interrupt.")
-
+def check_replied(comment):
+    """check if comment is already listed as replied in database"""
+    replied_result = session.query(RedditActivity).filter(replied).all()
+    for comment_id in replied_result:
+        if comment_id == comment.id:
+            return comment_id.replied
+        else return False
+    # return replied
+    
 def check_mentions():
-    '''
-    Bots can and should monitor https://www.reddit.com/message/mentions.json 
+    """Bots can and should monitor https://www.reddit.com/message/mentions.json 
     rather than polling/scraping every comment, whenever possible. 
     You can also monitor /api/v1/me and check the has_mail attribute to see if 
-    you need to look up mentions.json
-    '''
+    you need to look up mentions.json"""
+    # check_replied(mentions)
     pass
 
 def check_pm():
+    log.info('Checking PMs...')
+    # check_replied(pm)
     pass
 
-def search_query(subreddit, limit):
-    r = login()
-    search_result = r.subreddit(subreddit).search(
-                                '{0}'.format(botname), time_filter='week')
-    # print(search_result.__dict__)
-    # test_break()
+def parse(comment):
+    """Process & log replied comment
+    # get docbot replied posts firsts
+    replied = comment.id
+    replied_datetime = datetime.utcfromtimestamp(comment.created_utc)
+    # got this from (vars(submission.comments))
+    _post = submission.comments._comments_by_id[comment.parent_id]
+    comment_id = _post.id
+    username = _post.author.__dict__['name']
+    query_datetime = datetime.utcfromtimestamp(_post.created_utc)
+    # keyword
+    _q_re = re.search(pattern, _post.body)
+    query_keyword = ''.join(str(_q_re.group(4))).replace('\(\)', '')
+    permalink = 'https//reddit.com/r/{0}/comments/{1}'.format(
+                sub_name, comment_id)
+    replied_list = {
+            'comment_id' : comment_id, 
+            'username': username, 
+            'query_keyword': query_keyword,
+            'query_version': '',
+            'query_topic': '',
+            'query_datetime': query_datetime,
+            'permalink': permalink,
+            'replied': replied,
+            'replied_datetime': replied_datetime
+            }
+    log.debug('Replied to: {}: {} \n{}'.format(vars(_post.author), 
+        datetime.utcfromtimestamp(_post.created_utc), 
+        replied_list))
+    """
+    log.info('[Parsing]: comment id: {}, author: {}, query: {}'.format(
+                comment.id, comment.author, comment.body))
+    matches = re.search(pattern, comment.body)
+    log.debug('Comment:\n{}\n{}\n{}\n{}\nMatch? {}\n'.format(
+            '-'*80, comment.body, comment.__dict__, '-'*80, matches.group(4))
+    )
+    query = matches.group(4)
+    log.debug(type(query))
+    # if not matches:
+    #     log.error('Error: cannot find query in comment. Check again?')   
+    #     raise exception
 
-    for thread in result:
+def reply(comment):
+    log.info('Replying...{}'.format(comment.__dict__))
+    # double check to make sure current comment is not replied as there's a 
+    # slight chance logging not finished when comment was found in search_result
+    checked = check_replied(comment)
+    if checked:
+        log.debug('Already replied {} at {}. Skipping.'.format(
+                [comment.id, comment.author], checked))
+    query = parse_query(comment)
+    # reply_query = get_formatted(query)
+    # comment.reply(reply_query)
+    # log_as_replied(comment)
+    pass
+    
+
+def search(subreddit, limit):
+    ''' Thanks u/w1282 for reminding what function in programming function means
+        # * concerned with finding queries to the bot
+        # * concerned with validating that it hasn't already been responded to
+        # * concerned with gathering the proper information related to the query
+        # * concerned with formatting the response
+        # * concerned with posting the response
+
+        # response = lookup_response(parsed_query)
+        # formatted_response = format_response(response)
+        # post_response(query, formatted_response)
+    '''
+    search_result = r.subreddit(subreddit).search(
+                                '{0}'.format(keyword), time_filter='month')
+    log.debug('Search result: {}'.format(search_result.__dict__))
+    if search_result is None:
+        log.info('No matching result.')
+        return None
+    for thread in search_result:
         ''' get OP thread / submission to iterate comment/replies '''
-        submission = r.submission(id=thread)
-        ''' check if already replied, reply if not '''
-        # if thread not in replied_list:
-        #     reply_op = get_doc(submission.selftext)
-        #     submission.reply(reply_op)
-        ''' log the thread submission '''
-        # replied_list.append(submission.id, reply_op)
-        # print(
-        #     thread,
-        #     submission.author,
-        #     submission.created_utc,
-        #     submission.title,
-        #     submission.selftext,
-        #     submission.num_comments,
-        #     submission.permalink
-        #     )
+        log.debug('Iterating threads in search result : {}'.format(thread))
         # iterate every comments and their replies
+        submission = r.submission(id=thread)
         submission.comments.replace_more(limit=0)
         for comment in submission.comments.list(): 
-            ''' skip the replied comment '''
-            # if comment in replied_list: continue
-            ''' log the comments '''
-            matches = re.search(pattern, comment.body)
-            ''' check unreplied comment for calls and if found process query '''
-            if matches:
-                ''' log starting point '''
-                print(comment.id, comment.author, username)
-                if comment.id not in replied_list and comment.author != username:
-                    dt = datetime.utcnow()
-                    userquery = matches.group('keywords').strip(identifiers)
-                    ''' get the related entry in python docs.python.org '''
-                    # doc = get_doc(userquery)
-                    ''' Process query and format reply before submit comment '''
-                    with open('result.txt', 'a', encoding='utf-8') as logs:
-                        logs.write('''{0}: Found {1} from {2}: {3} 
-                            in url: {4}\n'''.format(
-                        dt, userquery, comment.author, comment.body, comment.id)
-                    )
-                    """comment.reply('''
-                        Reply test: Hi {0}! I got your call at {1}, 
-                        Found {2}.\n  Be right back with the related entry!
-                    '''.format(comment.author, dt, userquery))
-                    """
-                    # mock reply 
-                    print('''
-                        Reply test: Hi {0}! I got your call at {1}, 
-                        Found {2}.\n  Be right back with the related entry!
-                    '''.format(comment.author, dt, userquery))
-                    
-                    ''' log this one as replied '''
-                    print('Logged id[{0}] from {1}'.format(
-                                                    comment.id, comment.author))
-                    replied_list.append(comment.id)
-                    # print('Resuming after 60s...')
-                    # time.sleep(60)
-                ''' don't think this is needed? check if self replied '''
-                # elif comment.author == username:
-                    # print(comment.author, comment.body)
-                    # replied_list.append(comment.id)
-                # log.append(comment)
-                ''' wait for sleep_interval to avoid flooding & heroku limit '''
-                print('''
-                    Skipped replied comment id [{}]. Resuming after 60s...
-                    '''.format(comment.id))
-                time.sleep(60)
+            # to make it non lazy >>> log.info(vars(comment))
+            # docs../getting_started.html#get-available-attributes-of-an-object
+            if comment.author == botlogin:
+            # skip the replied comment & non-query comment
+                continue
+            log.debug('Processing comment tree: {} [{}]: {}'
+                .format(comment, comment.author, submission.comments.list()))
+            reply(comment)
+            # log(comment.__dict__)
 
-def main():
-    ''' capture exceptions '''
-    try:
-        ''' get replied list data '''
-        # get_replied()
-        search_sub(subreddit, 100)
-    except ConnectionError as no_connection:
-        print(no_connection)
-        time.sleep(100)
-        print('Reconnecting in 10secs...')
-        search_sub(subreddit, 100)
+def whatsub_doc(subreddit, keyword):
+    limit = 10
+    search(subreddit, keyword, limit)
+    check_pm()
+    check_mentions()
+
+def login():
+    ''' praw4 only needs the first 3 for read-only mode '''
+    log.info('Logging started')
+    r = praw.Reddit(user_agent=ua, client_id=appid, client_secret=secret, 
+        username=botlogin,
+        password=password
+        )
+    ''' log connection '''
+    log.info('Connected. Starting bot activity')
+    return r
 
 if __name__ == '__main__':
-    main()
+    log = logging.getLogger(__name__)
+    logging.config.dictConfig(ast.literal_eval(os.getenv('LOG_CFG')))
+    engine = create_engine('sqlite:///docbot.db', echo=False)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    ''' capture exceptions '''
+    try:
+        r = login()
+        whatsub_doc(subreddit, botcommand)
+    except ConnectionError as no_connection:
+        log.error(no_connection, exc_info=True)
+        time.sleep(100)
+        log.info('Reconnecting in 10secs...')
+        r = login()
+        whatsub_doc(subreddit, botcommand)
