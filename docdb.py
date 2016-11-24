@@ -51,24 +51,30 @@ class Library(Base):
 class RedditActivity(Base):
     """Main table"""
     __tablename__ = "RedditActivity"
- 
-    post_id = Column(Integer, primary_key=True) 
-    query  = Column(String, nullable=False)
-    username  = Column(String(100)) 
-    date_time  = Column(DateTime, default=datetime.utcnow)
+    
+    id = Column(Integer, primary_key=True)
+    comment_id = Column(String(10)) 
+    username  = Column(String(50), nullable=False) 
+    query_keyword  = Column(String)
+    query_version = Column(Integer)
+    query_topic = Column(String(25))
+    query_datetime  = Column(DateTime, default=datetime.utcnow)
     permalink  = Column(String(255))
-    thread = Column(String(255))
-    replied = Column(DateTime, default=datetime.utcnow)
+    replied = Column(String(10), nullable=False)
+    replied_datetime = Column(DateTime, default=datetime.utcnow)
  
-    def __init__(self, post_id, query, username, thread_id, 
-                topic, section, keyword, url, header, body, footer):
-        self.post_id = post_id
-        self.query = query
+    def __init__(self, comment_id=None, username=None, query_keyword=None, 
+            query_version=None, query_topic=None, query_datetime=None, 
+            permalink=None, replied=None, replied_datetime=None):
+        self.comment_id = comment_id
         self.username = username
-        self.date_time = date_time
+        self.query_keyword = query_keyword
+        self.query_version = query_version
+        self.query_topic = query_topic
+        self.query_datetime = query_datetime
         self.permalink = permalink
-        self.thread = thread
         self.replied = replied
+        self.replied_datetime = replied_datetime
 
 ########################################################################
  
