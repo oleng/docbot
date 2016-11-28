@@ -23,7 +23,8 @@ import praw
 import ast
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from docdb import Library, RedditActivity
+from docdb import Library as libdb 
+from docdb import RedditActivity as reddb
 
 ''' CONFIGS '''
 # Retrieve (Heroku) env private variables
@@ -38,15 +39,17 @@ subreddit       = 'bottest'
 
 # regex pattern for capturing user commands. Need to have everything 
 # captured between the identifiers
-pattern = re.compile(r"""(?P<bot>Doc!|DocBot!|SyntaxBot!)\s
-                        (?P<command>find|lookup|search|get)\s
-                        (?P<keywords>['"]{3}(.*)['"]{3})""", re.X)
+pattern = re.compile(r"""
+    (?P<bot>Doc!|DocBot!|SyntaxBot!\s)
+    (?P<command>find|get|\s)
+    (?P<query>['`\"\(]?.*\b|$)""", re.I | re.X)
+non_syntax = re.compile(r'''[\(\)\{\}\?!`\'\";\\\|+-,:\s]''')
 
-def mark_as_replied(comment):
+def mark_as_replied(comment, reply):
     """http://stackoverflow.com/a/1830499/6882768
     # get docbot replied posts firsts
-    replied = comment.id
-    replied_datetime = datetime.utcfromtimestamp(comment.created_utc)
+     = comment.id
+    query_datetime = datetime.utcfromtimestamp(comment.created_utc)
     # got this from (vars(submission.comments))
     _post = submission.comments._comments_by_id[comment.parent_id]
     comment_id = _post.id
@@ -76,31 +79,28 @@ def mark_as_replied(comment):
     pass
 
 def valid_query(comment):
-    """Searching for bot command in comment.body. 
-        Return False or query string"""
-    matches = re.search(pattern, comment.body)
-    if not matches:
-        log.debug('Error: cannot find query in comment.')
-        log.debug('\n{}\n>> {}\n>> {}\n{}'.format('-'*80, 
-                    comment.body, comment.__dict__, '-'*80)
-        )  
+    """Searching valid formatted command in comment, if found, strip non query 
+    parts in comment.body. Return False or full query string(s)"""
+    find_query = re.search(pattern, comment.body)
+    if not find_query:
+        log.debug('Error: cannot find query in %s', comment)
+        log.debug('\n{}\n>> {}\n>> {}\n{}'.format(
+            '-'*80, comment.body, comment.__dict__, '-'*80)
+        )
         return False
-    query_string = matches.group(4).replace('\(\)', '')
-    log.debug('Valid query {} in comment: {}'.format(query_string, comment))
-    return query_string
+    _query = find_query.group(find_query.lastgroup)
+    log.debug('Valid query: [%s] %s', comment, find_query.groupdict())
+    return _query
 
 def check_replied(comment):
     """check if comment is already listed as replied in database"""
-    replied_result = session.query(RedditActivity.replied).all()
-    commentid_result = session.query(RedditActivity.comment_id).all()
-    for _id, _repl in zip([*commentid_result], [*replied_result]):
-        log.debug('Checking [id: {}, reply: {}]'.format(_id[0], _repl[0]))
-        if _id[0] != comment.id:
-            log.debug('{} = {}. Next result'.format(_id[0], comment.id))
-            continue
-        elif _id[0] == comment.id:
-            return _repl[0]
-    return False
+    # change column replied to replied_id for naming comprehension
+    comment_result = session.query(reddb.comment_id, reddb.replied).filter(
+                                reddb.comment_id == comment.id).first()
+    if comment_result:
+        log.debug('Replied: [%s] %s', comment_result[0], comment_result[1])
+        return True
+    else: return False
     
 def check_mentions():
     """Bots can and should monitor https://www.reddit.com/message/mentions.json 
@@ -117,12 +117,38 @@ def check_pm():
     # check_replied(pm)
     pass
 
-def parse(query):
-    """Get query definitions from Library databas"""
-    log.info('Start parsing {}'.format(query))
-    query_result = session.query(Library.keyword == query)
-    log.info('Keyword found: {}'.format(*query_result))
-    pass
+def parse(query, comment):
+    """Get query definitions from libdb database"""
+    log.debug('Start parsing [%s]', comment, query)
+    # see docs/library/functions.html?highlight=filter#filter
+    stripped_query = [*filter(None, re.split(non_syntax, query))]
+    log.info('Parsed: {}'.format(stripped_query))
+    # assume first part is syntax keyword 
+    qkey = stripped_query[0]
+    # parse version number
+    if len(stripped_query) >=2 and stripped_query[2].replace('.', '').isdigit():
+        vers = stripped_query[2].replace('.', '')
+        query_result = session.query(libdb.keyword, libdb.version_id).filter(
+            (libdb.keyword == qkey) & ( libdb.version_id.startswith(vers) )
+        ).first()
+        log.debug('Query result [%s]: %s', comment, query_result)
+        return query_result
+
+    elif len(stripped_query) < 1:
+        query_result = session.query(libdb.keyword).filter(
+                                        libdb.keyword == qkey).first()
+        log.debug('Query result [%s]: %s', comment, query_result)
+        return query_result
+
+    # if query_result == None:
+    #     print('Sorry, not found!')
+    #     # try this instead: (related words)
+    # else:
+    #     log.debug(query_result)
+    # for word in query_result:
+    #     log.debug(word)
+    # log.info('Keyword found: {}'.format(query_result))
+    
 
 def reply(comment):
     """Reply user comment"""
@@ -133,9 +159,12 @@ def reply(comment):
     #     log.debug('Ignoring, already replied {} at {}.'.format(
     #             [comment.id, comment.author], checked))
     #     return
-    query = parse(valid_query(comment))
-    log.info('Replying...{}'.format(comment.__dict__))
-    log.info('Got query {}'.format(query))
+    response_data = parse(valid_query(comment), comment)
+    log.info('Replying...{}'.format( 
+        { comment.id: [ datetime.utcfromtimestamp(comment.created_utc), 
+                        comment.author, response_data ] } )
+    )
+    
     # reply_query = get_formatted(query)
     # comment.reply(reply_query)
     # mark_as_replied(comment)
@@ -157,25 +186,27 @@ def search(subreddit, keyword, limit):
         return None
     for thread in search_result:
         ''' get OP thread / submission to iterate comment/replies '''
-        log.debug('Iterating threads in search result : {}'.format(thread))
+        log.debug('Iterating threads in search result : %s', thread)
         # iterate every comments and their replies
         submission = r.submission(id=thread)
         submission.comments.replace_more(limit=0)
+        log.debug('Processing comment tree: {} [{}]: {}'.format(
+            submission, submission.author, submission.comments.list()
+        ))
         for comment in submission.comments.list(): 
-            # to make it non lazy >>> log.info(vars(comment))
-            # docs../getting_started.html#get-available-attributes-of-an-object
-            # skip the replied comment
-            if comment.author == botlogin or check_replied(comment):
-                log.info('Skipping comment {}: replied'.format(comment))
+            # skip own & replied comment
+            if comment.author == botlogin:
+                log.info('Skipping own comment: %s', comment)
+                continue
+            elif check_replied(comment):
+                log.info('Skipping comment %s: replied', comment)
                 continue
             # skip non-query comment
             elif not valid_query(comment):
-                log.info('Skipping comment {}: no query found'.format(comment))
+                log.info('Skipping comment %s: no query found', comment)
                 continue
-            log.debug('Processing comment tree: {} [{}]: {}'.format(
-                    submission, submission.author, submission.comments.list()
-                    ))
-            reply(comment)
+            else:
+                reply(comment)
 
 def whatsub_doc(subreddit, keyword):
     """Main bot activities & limit rate requests to oauth.reddit.com"""
@@ -199,7 +230,7 @@ def login():
 if __name__ == '__main__':
     log = logging.getLogger(__name__)
     logging.config.dictConfig(ast.literal_eval(os.getenv('LOG_CFG')))
-    engine = create_engine('sqlite:///docbot.db', echo=False)
+    engine = create_engine('sqlite:///docbot.db', echo=True)
     Session = sessionmaker(bind=engine)
     session = Session()
     ''' capture exceptions '''
