@@ -6,3 +6,5 @@ test.txt
 output.csv
 
 DocBot_Schema.sql
+
+*.log
