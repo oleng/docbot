@@ -8,10 +8,10 @@ git:
 from sqlalchemy import create_engine
 from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm import relationship, backref, synonym
 from datetime import date, datetime
 
-engine = create_engine('sqlite:///docbot.db', echo=True)
+engine = create_engine('sqlite:///docbot.db', echo=False)
 Base = declarative_base()
  
 ########################################################################
@@ -21,30 +21,41 @@ class Library(Base):
  
     id = Column(Integer, primary_key=True)
     version_id  = Column(Integer, nullable=False)
-    version_major  = Column(Integer) 
-    version_minor  = Column(Integer) 
-    version_micro  = Column(Integer)
-    topic  = Column(String(25))
-    section  = Column(String(25))
-    keyword  = Column(String(25))
+    major = Column(Integer) 
+    minor = Column(Integer) 
+    micro = Column(Integer)
+    topic = Column(String(25))
+    module = Column(String(25))
+    keytype = Column(String(50))
+    keyclass = Column(String(50))
+    keyword = Column(String(255))
     url = Column(String)
     header = Column(String)
     body = Column(String)
     footer = Column(String)
- 
-    def __init__(self, version_id, version_major, version_minor, version_micro, 
-                topic, section, keyword, url, header, body, footer):
+    tag = synonym(keytype)
+    
+    # default_version = synonym(version_id, descriptor=default_version)
+
+    def __init__(self, version_id=None, major=None, minor=None, 
+                micro=None, topic=None, module=None, keytype=None, 
+                keyclass=None, keyword=None, url=None, header=None, body=None, 
+                footer=None):
         self.version_id = version_id
-        self.version_major = version_major
-        self.version_minor = version_minor
-        self.version_micro = version_micro
+        self.major = major
+        self.minor = minor
+        self.micro = micro
+        # TODO: get highest value from major, minor & micro
         self.topic = topic
-        self.section = section
+        self.module = module
+        self.keytype = keytype
+        self.keyclass = keyclass
         self.keyword = keyword
         self.url = url
         self.header = header
         self.body = body
         self.footer = footer
+
 ########################################################################
 
 ########################################################################
@@ -60,7 +71,7 @@ class RedditActivity(Base):
     query_topic = Column(String(25))
     query_datetime  = Column(DateTime, default=datetime.utcnow)
     permalink  = Column(String(255))
-    replied = Column(String(10), nullable=False)
+    replied = Column(String(10))
     replied_datetime = Column(DateTime, default=datetime.utcnow)
  
     def __init__(self, comment_id=None, username=None, query_keyword=None, 
