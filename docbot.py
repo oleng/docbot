@@ -36,12 +36,12 @@ password        = os.getenv('syntaxbot_password')
 # Reddit related variables
 botcommand      = 'SyntaxBot!'
 subreddit       = 'bottest'
-
+default_vers      = libdb.version_id
 # regex pattern for capturing user commands. Need to have everything 
 # captured between the identifiers
 pattern = re.compile(r"""
     (?P<bot>Doc!|DocBot!|SyntaxBot!\s)
-    (?P<command>find|get|\s)
+    (?P<command>find|get|lookup|search|\s)
     (?P<query>['`\"\(]?.*\b|$)""", re.I | re.X)
 non_syntax = re.compile(r'''[\(\)\{\}\?!`\'\";\\\|+-,:\s]''')
 
@@ -119,24 +119,30 @@ def check_pm():
 
 def parse(query, comment):
     """Get query definitions from libdb database"""
-    log.debug('Start parsing [%s]', comment, query)
+    log.debug('Start parsing [%s]: %s', comment, query)
     # see docs/library/functions.html?highlight=filter#filter
     stripped_query = [*filter(None, re.split(non_syntax, query))]
-    log.info('Parsed: {}'.format(stripped_query))
+    log.info('Parsed [%s]: %s', comment, stripped_query)
     # assume first part is syntax keyword 
-    qkey = stripped_query[0]
-    # parse version number
-    if len(stripped_query) >=2 and stripped_query[2].replace('.', '').isdigit():
-        vers = stripped_query[2].replace('.', '')
-        query_result = session.query(libdb.keyword, libdb.version_id).filter(
-            (libdb.keyword == qkey) & ( libdb.version_id.startswith(vers) )
-        ).first()
-        log.debug('Query result [%s]: %s', comment, query_result)
-        return query_result
-
-    elif len(stripped_query) < 1:
+    qkey = ','.join(stripped_query[0].split('.'))
+    # there's no version number in query, use while instead
+    if len(stripped_query) == 1:
         query_result = session.query(libdb.keyword).filter(
-                                        libdb.keyword == qkey).first()
+                libdb.keyword.contains(qkey), 
+                libdb.version_id == default_vers
+            ).first()
+        log.debug('Query result [%s]: (ver %s) %s', 
+                    comment, default_vers, query_result)
+        return query_result
+    # parse version number
+    elif len(stripped_query) >=2 and stripped_query[2].replace('.', '').isdigit():
+        vers = stripped_query[2].replace('.', '')
+        query_result = session.query(
+            libdb.version_id, libdb.keyword).filter(
+                libdb.keyword.contains(qkey), 
+                libdb.version_id.startswith(vers)
+            ).first()
+
         log.debug('Query result [%s]: %s', comment, query_result)
         return query_result
 
@@ -156,15 +162,14 @@ def reply(comment):
     # slight chance marked_as_replied not yet finished
     # checked = check_replied(comment)
     # if checked:
-    #     log.debug('Ignoring, already replied {} at {}.'.format(
-    #             [comment.id, comment.author], checked))
+    #     log.debug('Ignoring, %s already replied at %s', comment.id,  checked)
     #     return
+    # pass comment too for debug purpose
     response_data = parse(valid_query(comment), comment)
     log.info('Replying...{}'.format( 
         { comment.id: [ datetime.utcfromtimestamp(comment.created_utc), 
                         comment.author, response_data ] } )
     )
-    
     # reply_query = get_formatted(query)
     # comment.reply(reply_query)
     # mark_as_replied(comment)
