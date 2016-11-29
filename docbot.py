@@ -118,41 +118,44 @@ def check_pm():
 
 def parse(query, comment):
     """Get query definitions from libdb database"""
-    _definition = {
-        'version': 'version_id', 'search': 'keyword', 'module': 'module'
-        }
-    _d = _definition
+    # see docs/library/functions.html?highlight=filter#filter
+    list_query = [*filter(None, re.split(non_syntax, query.strip()))]
+    log.debug('Start parsing: %s', list_query)
+    _d = _definition = {'version': 'version_id', 'search': 'keyword', 
+                        'module': 'module'}
     query_types = {
         'v': _d['version'], 'version': _d['version'], 
         'm': _d['module'], 'module': _d['module'], 
         'f': _d['search'], 'find': _d['search'], 's': _d['search'], 
         'search': _d['search'], 'get': _d['search'], 'lookup': _d['search']
         }
-    list_query = [*filter(None, re.split(non_syntax, query.strip()))]
-    log.debug('Start parsing: %s', list_query)
-
-    count = 1
-    length = len(list_query)
     queries = {}
     for i, arg in enumerate(list_query):
         log.debug('i: %s, %s', i, arg)
-        if arg.startswith('-', 0):
-            qkeyword = list_query[count]
-            log.debug('appending arg to queries: {%s: %s}', 
-                    query_types[arg.strip('-')], qkeyword
-                )
+        if arg.startswith('-'):
+            qkeyword = list_query[i + 1]
             queries[query_types[arg.strip('-')]] = qkeyword
-        if count <= length:
-            count += 1
-            print(count)
+            log.debug('appended arg to queries: {%s: %s}', 
+                query_types[arg.strip('-')], qkeyword
+                )
+        else:
+            continue
+    log.debug('queries: %s', queries)
     # http://stackoverflow.com/a/14516917/6882768
     try:
         log.debug(queries['version_id'])
+        if queries['version_id'].replace('.', '').isdigit():
+            queries['version_id'] = queries['version_id'].replace('.', '')
+        else:
+            queries['version_id'] = default_version
+        log.debug('version_id: stripped dots? %s', queries['version_id'])
     except KeyError as err:
         log.error('No version defined in %s, %s missing', queries, err)
-        queries['version_id'] = 352
+        queries['version_id'] = default_version
 
-    log.debug("Parsed: %s", queries)
+    log.info("Parsed version & keyword query: %s", queries)
+
+    # DB queries
         
     query_result = session.query(libdb.version_id, libdb.keyword).filter(
             libdb.keyword.contains(qkey), 
