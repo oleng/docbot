@@ -17,8 +17,7 @@ import os
 import re
 import time
 from datetime import datetime
-import logging
-import logging.config
+import logging, logging.config
 import praw
 import ast
 from sqlalchemy import create_engine
@@ -29,21 +28,21 @@ from docdb import RedditActivity as reddb
 ''' CONFIGS '''
 # Retrieve (Heroku) env private variables
 ua = useragent  = 'Python Syntax help bot for reddit v.0.1 (by /u/num8lock)'
-appid           = os.getenv('syntaxbot_app_id')
+appid           = os.getenv('syntaxbot_username_app_id')
 secret          = os.getenv('syntaxbot_app_secret')
 botlogin        = os.getenv('syntaxbot_username')
-password        = os.getenv('syntaxbot_password')
+passwd          = os.getenv('syntaxbot_password')
 # Reddit related variables
 botcommand      = 'SyntaxBot!'
 subreddit       = 'bottest'
-default_vers      = libdb.version_id
+default_vers    = libdb.version_id
 # regex pattern for capturing user commands. Need to have everything 
 # captured between the identifiers
 pattern = re.compile(r"""
-    (?P<bot>Doc!|DocBot!|SyntaxBot!\s)
+    (?P<bot>Doc|DocBot|SyntaxBot[!\s])
     (?P<command>find|get|lookup|search|\s)
     (?P<query>['`\"\(]?.*\b|$)""", re.I | re.X)
-non_syntax = re.compile(r'''[\(\)\{\}\?!`\'\";\\\|+-,:\s]''')
+non_syntax = re.compile(r'''[\(\)\{\}\?!`\'\";\\\|+,:\s]''')
 
 def mark_as_replied(comment, reply):
     """http://stackoverflow.com/a/1830499/6882768
@@ -119,32 +118,51 @@ def check_pm():
 
 def parse(query, comment):
     """Get query definitions from libdb database"""
-    log.debug('Start parsing [%s]: %s', comment, query)
-    # see docs/library/functions.html?highlight=filter#filter
-    stripped_query = [*filter(None, re.split(non_syntax, query))]
-    log.info('Parsed [%s]: %s', comment, stripped_query)
-    # assume first part is syntax keyword 
-    qkey = ','.join(stripped_query[0].split('.'))
-    # there's no version number in query, use while instead
-    if len(stripped_query) == 1:
-        query_result = session.query(libdb.keyword).filter(
-                libdb.keyword.contains(qkey), 
-                libdb.version_id == default_vers
-            ).first()
-        log.debug('Query result [%s]: (ver %s) %s', 
-                    comment, default_vers, query_result)
-        return query_result
-    # parse version number
-    elif len(stripped_query) >=2 and stripped_query[2].replace('.', '').isdigit():
-        vers = stripped_query[2].replace('.', '')
-        query_result = session.query(
-            libdb.version_id, libdb.keyword).filter(
-                libdb.keyword.contains(qkey), 
-                libdb.version_id.startswith(vers)
-            ).first()
+    _definition = {
+        'version': 'version_id', 'search': 'keyword', 'module': 'module'
+        }
+    _d = _definition
+    query_types = {
+        'v': _d['version'], 'version': _d['version'], 
+        'm': _d['module'], 'module': _d['module'], 
+        'f': _d['search'], 'find': _d['search'], 's': _d['search'], 
+        'search': _d['search'], 'get': _d['search'], 'lookup': _d['search']
+        }
+    list_query = [*filter(None, re.split(non_syntax, query.strip()))]
+    log.debug('Start parsing: %s', list_query)
 
-        log.debug('Query result [%s]: %s', comment, query_result)
-        return query_result
+    count = 1
+    length = len(list_query)
+    queries = {}
+    for i, arg in enumerate(list_query):
+        log.debug('i: %s, %s', i, arg)
+        if arg.startswith('-', 0):
+            qkeyword = list_query[count]
+            log.debug('appending arg to queries: {%s: %s}', 
+                    query_types[arg.strip('-')], qkeyword
+                )
+            queries[query_types[arg.strip('-')]] = qkeyword
+        if count <= length:
+            count += 1
+            print(count)
+    # http://stackoverflow.com/a/14516917/6882768
+    try:
+        log.debug(queries['version_id'])
+    except KeyError as err:
+        log.error('No version defined in %s, %s missing', queries, err)
+        queries['version_id'] = 352
+
+    log.debug("Parsed: %s", queries)
+        
+    query_result = session.query(libdb.version_id, libdb.keyword).filter(
+            libdb.keyword.contains(qkey), 
+            libdb.version_id.startswith(vers)
+        ).first()
+
+    log.debug('Query result [%s]: %s', comment, query_result)
+
+    return query_result
+
 
     # if query_result == None:
     #     print('Sorry, not found!')
@@ -226,7 +244,7 @@ def login():
     log.info('Logging started')
     r = praw.Reddit(user_agent=ua, client_id=appid, client_secret=secret, 
         username=botlogin,
-        password=password
+        password=passwd
         )
     ''' log connection '''
     log.info('Connected. Starting bot activity')
