@@ -301,8 +301,9 @@ def build_definitions(fullpath):
             # commit only when all definitions added to session
             session.add(doc)
             session.flush()
-    # commit the record the database
+    # commit the record the database and close connection
     session.commit()
+    session.close()
 
 for root, dirs, filenames in os.walk(path):
     for fname in filenames:
