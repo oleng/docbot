@@ -35,7 +35,9 @@ passwd          = os.getenv('syntaxbot_password')
 # Reddit related variables
 botcommand      = 'SyntaxBot!'
 subreddit       = 'bottest'
-default_vers    = libdb.version_id
+default_version = 352
+version3        = default_version
+version2        = 2712
 # regex pattern for capturing user commands. Need to have everything 
 # captured between the identifiers
 pattern = re.compile(r"""
@@ -132,49 +134,51 @@ def parse(query, comment):
     queries = {}
     for i, arg in enumerate(list_query):
         log.debug('i: %s, %s', i, arg)
-        if arg.startswith('-'):
-            qkeyword = list_query[i + 1]
-            queries[query_types[arg.strip('-')]] = qkeyword
-            log.debug('appended arg to queries: {%s: %s}', 
-                query_types[arg.strip('-')], qkeyword
-                )
-        else:
-            continue
+        qkeyword = list_query[i + 1]
+        queries[query_types[arg.strip('-')]] = qkeyword
+        log.debug('appended arg to queries: {%s: %s}', 
+            query_types[arg.strip('-')], qkeyword
+        )
+        log.debug('pop next arg: %s', list_query[i + 1])
+        list_query.pop(i + 1)
     log.debug('queries: %s', queries)
     # http://stackoverflow.com/a/14516917/6882768
     try:
         log.debug(queries['version_id'])
         if queries['version_id'].replace('.', '').isdigit():
             queries['version_id'] = queries['version_id'].replace('.', '')
+            if queries['version_id'].startswith('2', 0, 1):
+                queries['version_id'] = version2
+            else:
+                queries['version_id'] = version3
         else:
             queries['version_id'] = default_version
         log.debug('version_id: stripped dots? %s', queries['version_id'])
     except KeyError as err:
         log.error('No version defined in %s, %s missing', queries, err)
         queries['version_id'] = default_version
-
-    log.info("Parsed version & keyword query: %s", queries)
-
+    log.info("Parsed: %s", queries)
     # DB queries
-    main_kword = queries['keyword']
+    main_keyword = queries['keyword']
     main_ver = queries['version_id']
     option = queries['keyword'].rsplit('.', maxsplit=1)[0]
-    log.info("First: %s, optional query: %s", main_ver, option)
+    log.info("ver: %s, query: %s, (opt): %s", main_ver, main_keyword, option)
     # check if keyword exists
-    main_check = session.query(exists().where(libdb.keyword.contains(option)))
-    opt_check = session.query(exists().where(libdb.keyword.contains(option)))
+    main_check = session.query(exists().where(
+                        libdb.keyword.contains(option))).scalar()
+    opt_check = session.query(exists().where(
+                        libdb.keyword.contains(option))).scalar()
 
     if main_check:
         log.debug('main_query exists? %s', main_check)
-        main_query = select([libdb.keyword, libdb.version_id]).where(
-            (libdb.keyword.startswith(option)) & (libdb.version_id == main_ver)
-            )
-        results = session.execute(main_query)
-        log.debug('main query: %s', results)
-        row = results.fetchone()
-        print(row)
-        for result in results:
-            print('Result?????:', result)
+        main_query = session.query(libdb).filter(
+            (libdb.keyword.contains(main_keyword)) & 
+            (libdb.version_id == main_ver)
+            ).group_by(libdb.keyclass).order_by(libdb.id).one_or_none()
+        # results = session.execute(main_query)
+        log.debug('main_query: %s', main_query)
+        for result in main_query:
+            log.debug('result: %s', result.__dict__)
     
 
 def reply(comment):
@@ -195,7 +199,7 @@ def reply(comment):
     # comment.reply(reply_query)
     # mark_as_replied(comment)
     pass
-    
+
 
 def search(subreddit, keyword, limit):
     ''' # * concerned with finding queries to the bot
