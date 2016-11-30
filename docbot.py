@@ -156,25 +156,25 @@ def parse(query, comment):
     log.info("Parsed version & keyword query: %s", queries)
 
     # DB queries
-        
-    query_result = session.query(libdb.version_id, libdb.keyword).filter(
-            libdb.keyword.contains(qkey), 
-            libdb.version_id.startswith(vers)
-        ).first()
+    main_kword = queries['keyword']
+    main_ver = queries['version_id']
+    option = queries['keyword'].rsplit('.', maxsplit=1)[0]
+    log.info("First: %s, optional query: %s", main_ver, option)
+    # check if keyword exists
+    main_check = session.query(exists().where(libdb.keyword.contains(option)))
+    opt_check = session.query(exists().where(libdb.keyword.contains(option)))
 
-    log.debug('Query result [%s]: %s', comment, query_result)
-
-    return query_result
-
-
-    # if query_result == None:
-    #     print('Sorry, not found!')
-    #     # try this instead: (related words)
-    # else:
-    #     log.debug(query_result)
-    # for word in query_result:
-    #     log.debug(word)
-    # log.info('Keyword found: {}'.format(query_result))
+    if main_check:
+        log.debug('main_query exists? %s', main_check)
+        main_query = select([libdb.keyword, libdb.version_id]).where(
+            (libdb.keyword.startswith(option)) & (libdb.version_id == main_ver)
+            )
+        results = session.execute(main_query)
+        log.debug('main query: %s', results)
+        row = results.fetchone()
+        print(row)
+        for result in results:
+            print('Result?????:', result)
     
 
 def reply(comment):
