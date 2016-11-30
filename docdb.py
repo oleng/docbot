@@ -35,16 +35,6 @@ class Library(Base):
     footer = Column(String)
     tag = synonym(keytype)
 
-    @property
-    def default_version(self):
-        _major = str(func.max(self.major))
-        _minor = str(func.max(self.minor))
-        _micro = str(func.max(self.micro))
-        default = ''.join([_major, _minor, _micro])
-        return default
-
-    # default_version = synonym(default_version, descriptor=default_version)
-    '''
     def __init__(self, version_id, major, minor, 
                 micro, topic, module, keytype, 
                 keyclass, keyword, url, header, body, 
@@ -64,7 +54,7 @@ class Library(Base):
         self.body = body
         self.footer = footer
         # self.default_version = default_version
-    '''
+
 ########################################################################
 
 ########################################################################
