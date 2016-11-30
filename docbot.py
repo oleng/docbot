@@ -42,8 +42,8 @@ version2        = 2712
 # captured between the identifiers
 pattern = re.compile(r"""
     (?P<bot>Doc|DocBot|SyntaxBot[!\s])
-    (?P<command>find|get|lookup|search|\s)
-    (?P<query>['`\"\(]?.*\b|$)""", re.I | re.X)
+    (?P<command>([-]?)|(find|get|lookup|search)|\s)
+    (?P<query>['`\"\(-]?.*\b|$)""", re.I | re.X)
 non_syntax = re.compile(r'''[\(\)\{\}\?!`\'\";\\\|+,:\s]''')
 
 def mark_as_replied(comment, reply):
@@ -89,8 +89,11 @@ def valid_query(comment):
             '-'*80, comment.body, comment.__dict__, '-'*80)
         )
         return False
-    _query = find_query.group(find_query.lastgroup)
-    log.debug('Valid query: [%s] %s', comment, find_query.groupdict())
+    _query = '{0}{1}'.format(
+                            find_query.group('command'),
+                            find_query.group('query')
+                            )
+    log.debug('Valid query: %s', find_query.groupdict())
     return _query
 
 def check_replied(comment):
