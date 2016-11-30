@@ -182,7 +182,7 @@ def build_definitions(fullpath):
             elif 7 > len(_keyword.split('.')) > 1:
                 keyclass = _keyword.split('.')[0]
                 keyword = _keyword
-                for index, val in enumerate(_keyword.split('.')[1:]): 
+                for index, val in enumerate(_keyword.split('.')[1:]):
                     keyword += ', {}'.format(
                                     '.'.join(_keyword.split('.')[index + 1:])
                                     )
@@ -303,7 +303,6 @@ def build_definitions(fullpath):
             session.flush()
     # commit the record the database and close connection
     session.commit()
-    session.close()
 
 for root, dirs, filenames in os.walk(path):
     for fname in filenames:
@@ -312,4 +311,4 @@ for root, dirs, filenames in os.walk(path):
         build_definitions(fullpath)
 
 # build_definitions(path)
-
+session.close()

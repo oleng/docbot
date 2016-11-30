@@ -5,7 +5,7 @@ version:    v.0.1
 git:   
 
 """
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func
 from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref, synonym
@@ -34,13 +34,21 @@ class Library(Base):
     body = Column(String)
     footer = Column(String)
     tag = synonym(keytype)
-    
-    # default_version = synonym(version_id, descriptor=default_version)
 
-    def __init__(self, version_id=None, major=None, minor=None, 
-                micro=None, topic=None, module=None, keytype=None, 
-                keyclass=None, keyword=None, url=None, header=None, body=None, 
-                footer=None):
+    @property
+    def default_version(self):
+        _major = str(func.max(self.major))
+        _minor = str(func.max(self.minor))
+        _micro = str(func.max(self.micro))
+        default = ''.join([_major, _minor, _micro])
+        return default
+
+    # default_version = synonym(default_version, descriptor=default_version)
+    '''
+    def __init__(self, version_id, major, minor, 
+                micro, topic, module, keytype, 
+                keyclass, keyword, url, header, body, 
+                footer):
         self.version_id = version_id
         self.major = major
         self.minor = minor
@@ -55,7 +63,8 @@ class Library(Base):
         self.header = header
         self.body = body
         self.footer = footer
-
+        # self.default_version = default_version
+    '''
 ########################################################################
 
 ########################################################################
@@ -74,9 +83,9 @@ class RedditActivity(Base):
     replied = Column(String(10))
     replied_datetime = Column(DateTime, default=datetime.utcnow)
  
-    def __init__(self, comment_id=None, username=None, query_keyword=None, 
-            query_version=None, query_topic=None, query_datetime=None, 
-            permalink=None, replied=None, replied_datetime=None):
+    def __init__(self, comment_id, username, query_keyword, 
+            query_version, query_topic, query_datetime, 
+            permalink, replied, replied_datetime):
         self.comment_id = comment_id
         self.username = username
         self.query_keyword = query_keyword
