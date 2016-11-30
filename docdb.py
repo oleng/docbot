@@ -33,27 +33,7 @@ class Library(Base):
     header = Column(String)
     body = Column(String)
     footer = Column(String)
-    tag = synonym(keytype)
 
-    def __init__(self, version_id, major, minor, 
-                micro, topic, module, keytype, 
-                keyclass, keyword, url, header, body, 
-                footer):
-        self.version_id = version_id
-        self.major = major
-        self.minor = minor
-        self.micro = micro
-        # TODO: get highest value from major, minor & micro
-        self.topic = topic
-        self.module = module
-        self.keytype = keytype
-        self.keyclass = keyclass
-        self.keyword = keyword
-        self.url = url
-        self.header = header
-        self.body = body
-        self.footer = footer
-        # self.default_version = default_version
 
 ########################################################################
 
