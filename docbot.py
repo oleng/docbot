@@ -12,6 +12,7 @@ Acknowledgment:
             and helps from /r/learnpython.
             Thanks to:
             - u/w1282 for reminding what function in programming function means
+            - u/bboe for authoring praw and making it easier to use reddit API
 """
 import os
 import re
@@ -20,7 +21,7 @@ from datetime import datetime
 import logging, logging.config
 import praw
 import ast
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, exists
 from sqlalchemy.orm import sessionmaker
 from docdb import Library as libdb 
 from docdb import RedditActivity as reddb
@@ -28,16 +29,17 @@ from docdb import RedditActivity as reddb
 ''' CONFIGS '''
 # Retrieve (Heroku) env private variables
 ua = useragent  = 'Python Syntax help bot for reddit v.0.1 (by /u/num8lock)'
-appid           = os.getenv('syntaxbot_username_app_id')
+appid           = os.getenv('syntaxbot_app_id')
 secret          = os.getenv('syntaxbot_app_secret')
 botlogin        = os.getenv('syntaxbot_username')
 passwd          = os.getenv('syntaxbot_password')
 # Reddit related variables
 botcommand      = 'SyntaxBot!'
-subreddit       = 'bottest'
-default_version = 352
-version3        = default_version
+sub_name        = 'bottest'
+
+version3        = 352
 version2        = 2712
+default_version = version3
 # regex pattern for capturing user commands. Need to have everything 
 # captured between the identifiers
 pattern = re.compile(r"""
@@ -45,6 +47,7 @@ pattern = re.compile(r"""
     (?P<command>([-]?)|(find|get|lookup|search)|\s)
     (?P<query>['`\"\(-]?.*\b|$)""", re.I | re.X)
 non_syntax = re.compile(r'''[\(\)\{\}\?!`\'\";\\\|+,:\s]''')
+
 
 def mark_as_replied(comment, reply):
     """http://stackoverflow.com/a/1830499/6882768
@@ -79,6 +82,7 @@ def mark_as_replied(comment, reply):
     # check_profile(comment)
     pass
 
+
 def valid_query(comment):
     """Searching valid formatted command in comment, if found, strip non query 
     parts in comment.body. Return False or full query string(s)"""
@@ -86,25 +90,25 @@ def valid_query(comment):
     if not find_query:
         log.debug('Error: cannot find query in %s', comment)
         log.debug('\n{}\n>> {}\n>> {}\n{}'.format(
-            '-'*80, comment.body, comment.__dict__, '-'*80)
+                '-'*80, comment.body, comment.__dict__, '-'*80)
         )
         return False
-    _query = '{0}{1}'.format(
-                            find_query.group('command'),
-                            find_query.group('query')
-                            )
+    _query = '{0}{1}'.format( find_query.group('command'),
+                              find_query.group('query') )
     log.debug('Valid query: %s', find_query.groupdict())
     return _query
+
 
 def check_replied(comment):
     """check if comment is already listed as replied in database"""
     # change column replied to replied_id for naming comprehension
     comment_result = session.query(reddb.comment_id, reddb.replied).filter(
-                                reddb.comment_id == comment.id).first()
+                                    reddb.comment_id == comment.id).first()
     if comment_result:
         log.debug('Replied: [%s] %s', comment_result[0], comment_result[1])
         return True
     else: return False
+
     
 def check_mentions():
     """Bots can and should monitor https://www.reddit.com/message/mentions.json 
@@ -115,13 +119,15 @@ def check_mentions():
     # check_replied(mentions)
     pass
 
+
 def check_pm():
     """ Check Private Messages for queries """
     log.info('Checking PMs...')
     # check_replied(pm)
     pass
 
-def parse(query, comment):
+
+def parse(query):
     """Get query definitions from libdb database"""
     # see docs/library/functions.html?highlight=filter#filter
     list_query = [*filter(None, re.split(non_syntax, query.strip()))]
@@ -136,53 +142,91 @@ def parse(query, comment):
         }
     queries = {}
     for i, arg in enumerate(list_query):
-        log.debug('i: %s, %s', i, arg)
+        log.debug('parsing: i: %s, %s', i, arg)
         qkeyword = list_query[i + 1]
         queries[query_types[arg.strip('-')]] = qkeyword
-        log.debug('appended arg to queries: {%s: %s}', 
+        log.debug('parsing: appended arg to queries: {%s: %s}', 
             query_types[arg.strip('-')], qkeyword
         )
-        log.debug('pop next arg: %s', list_query[i + 1])
+        log.debug('parsing: pop next arg: %s', list_query[i + 1])
         list_query.pop(i + 1)
-    log.debug('queries: %s', queries)
+    log.debug('parsing: queries dict result: %s', queries)
     # http://stackoverflow.com/a/14516917/6882768
     try:
-        log.debug(queries['version_id'])
-        if queries['version_id'].replace('.', '').isdigit():
-            queries['version_id'] = queries['version_id'].replace('.', '')
-            if queries['version_id'].startswith('2', 0, 1):
+        log.debug('parsing: Set up version_id in: %s', queries['version_id'])
+        queries['version_id'] = queries['version_id'].replace('.', '')
+        if queries['version_id'].replace('.', '').isdigit() \
+           and queries['version_id'].startswith('2', 0, 1):
                 queries['version_id'] = version2
-            else:
-                queries['version_id'] = version3
         else:
             queries['version_id'] = default_version
-        log.debug('version_id: stripped dots? %s', queries['version_id'])
+        log.debug('parsing: version_id: stripped? %s', queries['version_id'])
     except KeyError as err:
-        log.error('No version defined in %s, %s missing', queries, err)
+        log.error('parsing: No version defined in %s, %s missing', queries, err)
         queries['version_id'] = default_version
     log.info("Parsed: %s", queries)
+
     # DB queries
     main_keyword = queries['keyword']
     main_ver = queries['version_id']
     option = queries['keyword'].rsplit('.', maxsplit=1)[0]
-    log.info("ver: %s, query: %s, (opt): %s", main_ver, main_keyword, option)
-    # check if keyword exists
-    main_check = session.query(exists().where(
-                        libdb.keyword.contains(option))).scalar()
-    opt_check = session.query(exists().where(
-                        libdb.keyword.contains(option))).scalar()
+    # Data needed to process a reply:
+    columns = [ libdb.id, libdb.version_id, libdb.module, libdb.keytype, 
+                libdb.keyclass, libdb.keyword, libdb.url, libdb.header, 
+                libdb.body, libdb.footer ]
 
-    if main_check:
-        log.debug('main_query exists? %s', main_check)
-        main_query = session.query(libdb).filter(
-            (libdb.keyword.contains(main_keyword)) & 
-            (libdb.version_id == main_ver)
-            ).group_by(libdb.keyclass).order_by(libdb.id).one_or_none()
-        # results = session.execute(main_query)
-        log.debug('main_query: %s', main_query)
-        for result in main_query:
-            log.debug('result: %s', result.__dict__)
+    log.info('> Query check: Version: `%s`. Keyword: `%s`, Module (opt): `%s`', 
+                main_ver, main_keyword, option)
+    # check if keyword exists, from sqlalchemy creator
+    # http://techspot.zzzeek.org/2008/09/09/selecting-booleans/
+    main_check = session.query(exists().where(
+                libdb.keyword.contains(main_keyword)).where(
+                libdb.version_id == main_ver)).scalar()
+    opt_check = session.query(exists().where(libdb.module == option)
+                .where(libdb.version_id == main_ver)).scalar()
+    log.debug('> Exists? main_query: %s. opt_query: %s.', main_check, opt_check)
     
+    if main_check:
+        # group by module hopefully = better search (motherbot:build_definitions)
+        main_query = session.query(*columns).filter(
+                (libdb.keyword.contains(main_keyword)) & 
+                (libdb.version_id == main_ver)
+                ).group_by(libdb.module).order_by(libdb.id).first()
+        log.debug('Library returns (main_query): id: %s, vers: %s, keyword: %s', 
+                    main_query.id, main_query.version_id, main_query.keyword)
+        return main_query, 'main'
+    elif opt_check:
+        # idkwhy exact word module w/ grouping keyword resulted to first keyword 
+        log.info('opt_query: Query Library.module instead of Library.keyword')
+        opt_query = session.query(*columns).filter(
+                (libdb.module == option) & (libdb.version_id == main_ver)
+                ).group_by(libdb.keyword).order_by(libdb.id).first()
+        log.debug('Library returns (opt_query): id: %s, vers: %s, module: %s',
+                    opt_query.id, opt_query.version_id, opt_query.module)
+        return opt_query, 'option'
+    else:
+        log.error('Nothing found for query %s', query)
+        return None
+
+
+def format_response(data, comment):
+    """Format bot reply to user query"""
+    permalink = 'https://www.reddit.com/r/{0}/comments/{1}/comment/{2}'.format(
+                sub_name, comment.link_id.split('_')[1], comment.id)
+    if data is None:
+        # for `not found` reply
+        query = valid_query(comment)
+        botreply = """Sorry, {0}, I can't seem to find what you're asking here  
+            [`{1}`]({2}). Maybe a typo?  \nYou can PM me to try 
+            another request, though.  \n{3}""".format(
+            comment.author, query, permalink, data.footer)
+    else:
+        reply_data = data[0]
+        reply_type = data[1]
+        botreply = """{0} \n {1} \n {2} \n {3}""".format(reply_type, permalink,
+            reply_data.header, reply_data.body)
+    return botreply
+
 
 def reply(comment):
     """Reply user comment"""
@@ -192,14 +236,15 @@ def reply(comment):
     # if checked:
     #     log.debug('Ignoring, %s already replied at %s', comment.id,  checked)
     #     return
-    # pass comment too for debug purpose
-    response_data = parse(valid_query(comment), comment)
+    ##
+    response_data = parse(valid_query(comment))
     log.info('Replying...{}'.format( 
-        { comment.id: [ datetime.utcfromtimestamp(comment.created_utc), 
-                        comment.author, response_data ] } )
-    )
-    # reply_query = get_formatted(query)
-    # comment.reply(reply_query)
+            { comment.id: [ datetime.utcfromtimestamp(comment.created_utc), 
+            comment.author.name, response_data[0].id, response_data[1] ] } ) )
+    # pass comment too for logging purpose
+    bot_response = format_response(response_data, comment)
+    log.debug('Reply message: %s', bot_response)
+    # comment.reply(bot_response)
     # mark_as_replied(comment)
     pass
 
@@ -241,12 +286,14 @@ def search(subreddit, keyword, limit):
             else:
                 reply(comment)
 
+
 def whatsub_doc(subreddit, keyword):
     """Main bot activities & limit rate requests to oauth.reddit.com"""
     limit = 10
     search(subreddit, keyword, limit)
     check_pm()
     check_mentions()
+
 
 def login():
     """praw4 OAuth2 login procedure"""
@@ -260,6 +307,7 @@ def login():
     log.info('Connected. Starting bot activity')
     return r
 
+
 if __name__ == '__main__':
     log = logging.getLogger(__name__)
     logging.config.dictConfig(ast.literal_eval(os.getenv('LOG_CFG')))
@@ -269,10 +317,10 @@ if __name__ == '__main__':
     ''' capture exceptions '''
     try:
         r = login()
-        whatsub_doc(subreddit, botcommand)
+        whatsub_doc(sub_name, botcommand)
     except ConnectionError as no_connection:
         log.error(no_connection, exc_info=True)
         time.sleep(100)
         log.info('Reconnecting in 10secs...')
         r = login()
-        whatsub_doc(subreddit, botcommand)
+        whatsub_doc(sub_name, botcommand)
