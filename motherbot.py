@@ -72,13 +72,13 @@ def build_definitions(fullpath):
     DOC_LONGVERSION =_version.group(1)  # i.e. 3.5.2
     DOC_VERSION     = DOC_LONGVERSION[0]    # i.e. 3
     DOC_TOPIC       = _part.group(1)          # i.e. library, references, etc
-    DOC_SECTION     = os.path.splitext(_part.group(2))[0]  # i.e, functions, etc
+    DOC_MODULE     = os.path.splitext(_part.group(2))[0]  # i.e, functions, etc
     DOC_SUFFIX      = _suffix.group(1)
     DOC_VER_URL     = '{}/{}/'.format(DOC_ROOT, DOC_VERSION)
-    DOC_SECTION_URL = '{}/{}/{}/'.format(DOC_ROOT, DOC_VERSION, DOC_TOPIC)
+    DOC_MODULE_URL = '{}/{}/{}/'.format(DOC_ROOT, DOC_VERSION, DOC_TOPIC)
     DOC_FULL_URL = '{}/{}/{}/{}{}'.format(
-                    DOC_ROOT, DOC_VERSION, DOC_TOPIC, DOC_SECTION, DOC_SUFFIX)
-    if _part.group(1) == (DOC_ROOT or fullpath) and DOC_SECTION == 'glossary':
+                    DOC_ROOT, DOC_VERSION, DOC_TOPIC, DOC_MODULE, DOC_SUFFIX)
+    if _part.group(1) == (DOC_ROOT or fullpath) and DOC_MODULE == 'glossary':
         DOC_TOPIC = 'glossary'
 
     ''' Set database variables, TODO for analytic & logging purposes
@@ -101,7 +101,7 @@ def build_definitions(fullpath):
                 if match.group(1):
                     return r'{}{}'.format(DOC_FULL_URL, match.group(1))
                 elif match.group(2):
-                    return r'{}{}'.format(DOC_SECTION_URL, match.group(2))
+                    return r'{}{}'.format(DOC_MODULE_URL, match.group(2))
                 elif match.group(3):
                     strings = match.group(3)[
                                 (match.start(3)+3): match.end()
@@ -295,7 +295,7 @@ def build_definitions(fullpath):
             doc = Library(
                     version_id=version_id, major=major, 
                     minor=minor, micro=micro, 
-                    topic=DOC_TOPIC, module=DOC_SECTION, keytype=keytype, 
+                    topic=DOC_TOPIC, module=DOC_MODULE, keytype=keytype, 
                     keyclass=keyclass, keyword=keyword, 
                     url=url, header=header, body=body, footer=footer,)
             # commit only when all definitions added to session
