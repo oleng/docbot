@@ -5,8 +5,7 @@ Desc:       reddit module
 version:    v.0.2
 git:        
 Notes:      praw4 (see requirements.txt)
-            [Heroku] uses env variables for storing OAuth secret key and
-            reddit account username/password
+            [Heroku] uses env variables for all authentication credentials
 Acknowledgment:
             Codes based on many reddit bot creators /u/redditdev
             and helps from /r/learnpython.
@@ -33,6 +32,7 @@ appid           = os.getenv('syntaxbot_app_id')
 secret          = os.getenv('syntaxbot_app_secret')
 botlogin        = os.getenv('syntaxbot_username')
 passwd          = os.getenv('syntaxbot_password')
+db_config       = os.getenv('DATABASE_URL')
 # Reddit related variables
 botcommand      = 'SyntaxBot!'
 sub_name        = 'bottest'
@@ -146,8 +146,7 @@ def parse(query):
         qkeyword = list_query[i + 1]
         queries[query_types[arg.strip('-')]] = qkeyword
         log.debug('parsing: appended arg to queries: {%s: %s}', 
-            query_types[arg.strip('-')], qkeyword
-        )
+                    query_types[arg.strip('-')], qkeyword)
         log.debug('parsing: pop next arg: %s', list_query[i + 1])
         list_query.pop(i + 1)
     log.debug('parsing: queries dict result: %s', queries)
@@ -172,15 +171,15 @@ def parse(query):
     option = queries['keyword'].rsplit('.', maxsplit=1)[0]
     # Data needed to process a reply:
     columns = [ libdb.id, libdb.version_id, libdb.module, libdb.keytype, 
-                libdb.keyclass, libdb.keyword, libdb.url, libdb.header, 
-                libdb.body, libdb.footer ]
+                libdb.keyclass, libdb.keywords, libdb.header, libdb.body,
+                libdb.footer, libdb.url ]
 
     log.info('> Query check: Version: `%s`. Keyword: `%s`, Module (opt): `%s`', 
                 main_ver, main_keyword, option)
     # check if keyword exists, from sqlalchemy creator
     # http://techspot.zzzeek.org/2008/09/09/selecting-booleans/
     main_check = session.query(exists().where(
-                libdb.keyword.contains(main_keyword)).where(
+                libdb.keywords.contains(main_keyword)).where(
                 libdb.version_id == main_ver)).scalar()
     opt_check = session.query(exists().where(libdb.module == option)
                 .where(libdb.version_id == main_ver)).scalar()
@@ -189,18 +188,18 @@ def parse(query):
     if main_check:
         # group by module hopefully = better search (motherbot:build_definitions)
         main_query = session.query(*columns).filter(
-                (libdb.keyword.contains(main_keyword)) & 
+                (libdb.keywords.contains(main_keyword)) & 
                 (libdb.version_id == main_ver)
-                ).group_by(libdb.module).order_by(libdb.id).first()
+                ).group_by(libdb.module, libdb.id).order_by(libdb.id).first()
         log.debug('Library returns (main_query): id: %s, vers: %s, keyword: %s', 
-                    main_query.id, main_query.version_id, main_query.keyword)
+                    main_query.id, main_query.version_id, main_query.keywords)
         return main_query, 'main'
     elif opt_check:
         # idkwhy exact word module w/ grouping keyword resulted to first keyword 
         log.info('opt_query: Query Library.module instead of Library.keyword')
         opt_query = session.query(*columns).filter(
                 (libdb.module == option) & (libdb.version_id == main_ver)
-                ).group_by(libdb.keyword).order_by(libdb.id).first()
+                ).group_by(libdb.keywords, libdb.id).order_by(libdb.id).first()
         log.debug('Library returns (opt_query): id: %s, vers: %s, module: %s',
                     opt_query.id, opt_query.version_id, opt_query.module)
         return opt_query, 'option'
@@ -215,16 +214,27 @@ def format_response(data, comment):
                 sub_name, comment.link_id.split('_')[1], comment.id)
     if data is None:
         # for `not found` reply
+        msg_template = 'SyntaxBot --find {0} --version 3'.format('print')
+        # stolen from RemindMeBot 
+        pm_link = \
+        'https://np.reddit.com/message/compose/?to={0}&subject={1}&message={2}' \
+        ''.format('SyntaxBot', 'print', msg_template)
+        readme_link = 'https://www.reddit.com/r/SyntaxBot/'        
+        standard_footer = '-----\n`>>>` [README]({0}) | ' \
+                 '`>>>` [Try get it from PM!]({1})'.format(readme_link, pm_link)
+
         query = valid_query(comment)
-        botreply = """Sorry, {0}, I can't seem to find what you're asking here  
-            [`{1}`]({2}). Maybe a typo?  \nYou can PM me to try 
-            another request, though.  \n{3}""".format(
-            comment.author, query, permalink, data.footer)
+        botreply = """I'm sorry, {0}, I can't seem to find what you're asking   
+            here [`{1}`]({2}). Maybe a typo? Be sure to check the FAQ in the  
+            Readme link.  \n\nYou can PM me to try another request, too. Thanks!  
+            \n{3}""".format(comment.author, query, permalink, standard_footer)
     else:
         reply_data = data[0]
         reply_type = data[1]
-        botreply = """{0} \n {1} \n {2} \n {3}""".format(reply_type, permalink,
-            reply_data.header, reply_data.body)
+        botreply = """{0} \n {1} \n {2} \n {3} \n {4}""".format(
+                        reply_data.header, reply_data.body, reply_data.footer, 
+                        reply_type, permalink, )
+    
     return botreply
 
 
@@ -240,7 +250,7 @@ def reply(comment):
     response_data = parse(valid_query(comment))
     log.info('Replying...{}'.format( 
             { comment.id: [ datetime.utcfromtimestamp(comment.created_utc), 
-            comment.author.name, response_data[0].id, response_data[1] ] } ) )
+            comment.author.name, response_data ] } ) )
     # pass comment too for logging purpose
     bot_response = format_response(response_data, comment)
     log.debug('Reply message: %s', bot_response)
@@ -250,11 +260,7 @@ def reply(comment):
 
 
 def search(subreddit, keyword, limit):
-    ''' # * concerned with finding queries to the bot
-        # * concerned with validating that it hasn't already been responded to
-        # * concerned with gathering the proper information related to the query
-        # * concerned with formatting the response
-        # * concerned with posting the response
+    ''' Search for the queries in the sub using reddit search, time filtered 
     '''
     search_result = r.subreddit(subreddit).search('{0}'.format(
                     keyword), time_filter='month')
@@ -269,8 +275,7 @@ def search(subreddit, keyword, limit):
         submission = r.submission(id=thread)
         submission.comments.replace_more(limit=0)
         log.debug('Processing comment tree: {} [{}]: {}'.format(
-            submission, submission.author, submission.comments.list()
-        ))
+            submission, submission.author, submission.comments.list() ))
         for comment in submission.comments.list(): 
             # skip own & replied comment
             if comment.author == botlogin:
@@ -289,10 +294,11 @@ def search(subreddit, keyword, limit):
 
 def whatsub_doc(subreddit, keyword):
     """Main bot activities & limit rate requests to oauth.reddit.com"""
-    limit = 10
+    log.info('Whatsub, doc?')
+    limit = 100
     search(subreddit, keyword, limit)
-    check_pm()
-    check_mentions()
+    # check_pm()
+    # check_mentions()
 
 
 def login():
@@ -311,7 +317,7 @@ def login():
 if __name__ == '__main__':
     log = logging.getLogger(__name__)
     logging.config.dictConfig(ast.literal_eval(os.getenv('LOG_CFG')))
-    engine = create_engine('sqlite:///docbot.db', echo=True)
+    engine = create_engine(db_config, echo=True)
     Session = sessionmaker(bind=engine)
     session = Session()
     ''' capture exceptions '''
