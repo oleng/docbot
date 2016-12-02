@@ -1,70 +1,65 @@
 #!/usr/bin/env python
 """"
 [MotherBot] Syntax/docbot : SQLAlchemy database definition /u/num8lock
-version:    v.0.1
+version:    v.0.2
 git:   
 
 """
+import os
+import logging, logging.config
+import ast
 from sqlalchemy import create_engine, func
 from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref, synonym
 from datetime import date, datetime
 
-engine = create_engine('sqlite:///docbot.db', echo=False)
+log = logging.getLogger(__name__)
+# load logging config from env variable
+logging.config.dictConfig(ast.literal_eval(os.getenv('LOG_CFG')))
+db_config = os.getenv('DATABASE_URL')
+engine = create_engine(db_config, echo=True, isolation_level="READ COMMITTED")
+
 Base = declarative_base()
  
 ########################################################################
 class Library(Base):
-    """Main table"""
+    """PostgreSQL table for Python doc definitions"""
     __tablename__ = "Library"
  
-    id = Column(Integer, primary_key=True)
-    version_id  = Column(Integer, nullable=False)
-    major = Column(Integer) 
-    minor = Column(Integer) 
-    micro = Column(Integer)
-    topic = Column(String(25))
-    module = Column(String(25))
-    keytype = Column(String(50))
-    keyclass = Column(String(50))
-    keyword = Column(String(255))
-    url = Column(String)
-    header = Column(String)
-    body = Column(String)
-    footer = Column(String)
+    id              = Column(Integer, primary_key=True)
+    version_id      = Column(Integer, nullable=False)
+    major           = Column(Integer, nullable=False) 
+    minor           = Column(Integer, nullable=False) 
+    micro           = Column(Integer, nullable=False)
+    topic           = Column(String(25), nullable=False)
+    module          = Column(String(25), nullable=False)
+    keytype         = Column(String(50))
+    keyclass        = Column(String(50))
+    keywords        = Column(String(255), nullable=False)
+    header          = Column(String, nullable=False)
+    body            = Column(String, nullable=False)
+    footer          = Column(String, nullable=False)
+    url             = Column(String(125))
 
 
 ########################################################################
 
 ########################################################################
+
 class RedditActivity(Base):
-    """Main table"""
+    """PostgresQL table for Reddit activity record"""
     __tablename__ = "RedditActivity"
     
-    id = Column(Integer, primary_key=True)
-    comment_id = Column(String(10)) 
-    username  = Column(String(50), nullable=False) 
-    query_keyword  = Column(String)
-    query_version = Column(Integer)
-    query_topic = Column(String(25))
-    query_datetime  = Column(DateTime, default=datetime.utcnow)
-    permalink  = Column(String(255))
-    replied = Column(String(10))
-    replied_datetime = Column(DateTime, default=datetime.utcnow)
- 
-    def __init__(self, comment_id, username, query_keyword, 
-            query_version, query_topic, query_datetime, 
-            permalink, replied, replied_datetime):
-        self.comment_id = comment_id
-        self.username = username
-        self.query_keyword = query_keyword
-        self.query_version = query_version
-        self.query_topic = query_topic
-        self.query_datetime = query_datetime
-        self.permalink = permalink
-        self.replied = replied
-        self.replied_datetime = replied_datetime
+    id              = Column(Integer, primary_key=True)
+    comment_id      = Column(String(25), nullable=False)
+    username        = Column(String(100), nullable=False)
+    created_utc     = Column(DateTime, default=datetime.utcnow)
+    query_keyword   = Column(String, nullable=False)
+    query_version   = Column(Integer)
+    comment_data    = Column(String)    # permalink, submission_id
+    replied         = Column(String(10))
+    repliedtime     = Column(DateTime, default=datetime.utcnow)
 
 ########################################################################
  
