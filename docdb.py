@@ -36,7 +36,7 @@ class Library(Base):
     module          = Column(String(25), nullable=False)
     keytype         = Column(String(50))
     keyclass        = Column(String(50))
-    keywords        = Column(String(255), nullable=False)
+    keywords        = Column(String, nullable=False)
     header          = Column(String, nullable=False)
     body            = Column(String, nullable=False)
     footer          = Column(String, nullable=False)
