@@ -31,27 +31,20 @@ docvers = '3.5.2'
 path = os.path.expanduser('~/Google Drive/docs/python-docs/{}/library/'.format(
                                                                     docvers))
     
-def json_builder(data, path):
+def json_builder(data):
     """Create JSON object and file to store the definitions
-    Failed to make it work for now"""
-    # try: 
-    #     import simplejson as json
-    # except ImportError as err:
-    #     import json
-        # log.error('Cannot import simplejson, use builtin json module instead.')
-    _module, _type, _class = data[0]
-    _keyword = data[1]
-    _response_data = data[2]
-    _data = { 'meta': {'module': _module, 'keytype': _type, 'keyclass': _class},
-            'keywords': _keyword, 
-            'data': _response_data,
-            }
-    serialized = json.dumps(_data, 
+    Failed to make it work for now, sqlalchemy claims not valid json"""
+    try: 
+        import simplejson as json
+    except ImportError as err:
+        import json
+        log.error('Cannot import simplejson, use builtin json module instead.')
+    serialized = json.dumps(data, 
                 sort_keys=True, ensure_ascii=False).encode('utf-8')
     # # development: save json files
-    # filepath = './json/{0}.{1}.json'.format(_keyword[0], docvers)
-    # with open(filepath, 'wb') as jsonfile:
-    #     jsonfile.write(serialized)
+    filepath = './json/{0}.{1}.json'.format(data['keywords'][0], docvers)
+    with open(filepath, 'wb') as jsonfile:
+        jsonfile.write(serialized)
     log.info('%s', serialized)
     return serialized
 
@@ -129,9 +122,7 @@ def build_definitions(fullpath):
                 elif match.group(2):
                     return r'{}{}'.format(DOC_MODULE_URL, match.group(2))
                 elif match.group(3):
-                    strings = match.group(3)[
-                                (match.start(3)+3): match.end()
-                                ]
+                    strings = match.group(3)[ (match.start(3)+3) : match.end() ]
                     ''' This match.span example basically just for reminder '''
                     #   debug(['<re matched group 3> : {} : {}{}'
                     #     .format(match.span(3), DOC_VER_URL, strings])
@@ -141,8 +132,7 @@ def build_definitions(fullpath):
                     print('{} not found :(( ', match)
             urlsub = re.sub(
               r'^(#[\w\.]+)|^([\w]+\.htm.[#\w.]+)|^(\.{2}/[\w+|/+]*\.htm.#.*)', 
-              subpattern, arg
-              )
+              subpattern, arg)
             return urlsub
         # This might be the wrong way to catch exception
         except re.error as err:
@@ -158,26 +148,54 @@ def build_definitions(fullpath):
         return header[arg]
 
 
+    def markdown_special(tag):
+        """ Some css class that used to mark important notes """ 
+        _class = {'versionchanged': 'em', 'versionadded': 'blockquote', 
+                'versionmodified': 'em', 'admonition-title': 'b',
+                'first': 'blockquote', 'last': 'blockquote',}
+        # log.debug('Finding span class %s', arg)
+        # no css class found, just go ahead unwrap
+        if not 'class' in tag.attrs:
+            tag.unwrap()
+            return False
+        for css_name in tag.attrs['class']:
+            if css_name in _class:
+                log.debug('Found class: %s in %s', tag.attrs['class'], tag)
+                noted_tag = _doc.new_tag(_class[css_name])
+                if tag.string is not None:
+                    tag.string.strip()
+                    tag.string.wrap(noted_tag)
+                    noted_tag.insert_after(_doc.new_string(' '))
+                else:
+                    tag.wrap(noted_tag)
+                tag.unwrap()
+                log.debug('Changed %s. Unwrapped? %s', noted_tag, tag)
+                return True
+            else:
+                tag.unwrap()
+                return False
+
+
     def valid(section):
         """[ Keywords ] Evaluate if section contains valid definition"""
-        # log.debug(section)
+        # log.debug('Evaluating section %s', section)
         try:
             if 'id' in section.dt.attrs:
                 return True
             elif section.dt.code.next_sibling is not None:
                 return True
             else:
-                log.warn('Skipping: can\'t find keyword in %s', section.dt.code)
+                log.warn("Skipping: can't find keyword in %s", section.dt.code)
                 return False
-        except AttributeError as error:
-            log.error(error)
+        except AttributeError as err:
+            log.error('Error, no keyword identifiers found.\n %s', err)
             return False
 
 
     def create_keywords(section):
         """ [ Keywords ] Extract definition type (class, method, etc) and 
         keyword strings"""
-        # log.debug('Creating keyword')
+        log.debug('Creating keyword')
         try:
             if 'id' in section.dt.attrs:
                 keytype = section['class'][0]
@@ -190,7 +208,6 @@ def build_definitions(fullpath):
                     log.debug('`Descclassname` not found')
                     _keyword = section.dt.find(class_='descname').string
                     log.debug('creating... [css] _keyword: %s', _keyword)
-
                 elif section.dt.find(class_='descclassname') is not None:
                     log.debug('Found css `descclassname`')
                     descclass = section.dt.find(class_='descclassname').string
@@ -200,26 +217,21 @@ def build_definitions(fullpath):
                     log.debug('creating... [css] _keyword: %s', _keyword)
             '''separate class from methods & functions based on the length of 
             syntax we have so far. note: this is not in above loop 
-            `descclass name not found` because [id]'''
+            `descclass name not found`, because [id]'''
             if len(_keyword.split('.')) == 1:
                 log.debug('creating... One word syntax %s', _keyword)
                 keyclass = keytype
+                log.info('Created keywords: %s', _keyword)
                 return keytype, keyclass, [_keyword]
-            elif len(_keyword.split('.')) == 2:
-                log.debug('creating... Two word syntax %s', _keyword)
-                keyclass = _keyword.split('.')[0]
-                return keytype, keyclass, [_keyword]
-            elif len(_keyword.split('.')) > 2:
-                log.debug('creating... More than two word syntax %s', _keyword)
+            elif len(_keyword.split('.')) > 1:
+                log.debug('creating... More than one word syntax %s', _keyword)
                 _keys = _keyword.split('.', maxsplit=1)
                 keyclass = _keys[0]
-                splitkeys = _keys[1].split('.')
+                splitkeys = _keyword.split('.')
                 keyword = []
                 for i, val in enumerate(splitkeys):
-                    if i == len(splitkeys) - 1:
-                        break
-                    else:
-                        keyword.append('.'.join(splitkeys[i : ]))
+                    keyword.append('.'.join(splitkeys[i : ]))
+                log.info('Created keywords: %s', keyword)
                 return keytype, keyclass, keyword
 
         except AttributeError as error:
@@ -231,33 +243,33 @@ def build_definitions(fullpath):
     def create_header(section):
         """ [ Header ] Convert anchors/relative URLs to absolute paths if exists
         then convert html markups to markdown."""
-        # log.debug('Creating header')
+        log.debug('Creating header')
         if section.a is not None:
             internal_link = transform_relative_links(section.a['href'])
             section.a['href'] = internal_link
+            del section.a['title']
             url = section.a['href']
         else:
             log.warn('No internal anchors/links found %s', section.string)
             url = None
-        # < Hack > copy untouched section.dd 1st since we're destroying all 
-        # spans & still need to manipulate them in body (section.dd) later
-        store_dd = cp.copy(section.dd)
-        for span in section.find_all('span'):
-            span.unwrap()
-        # put copy back
-        section.dd = store_dd   
         # < Hack > fix annoying trailing space in <em>class </em> to avoid 
         # incorrect markdown formatting
-        for em in section.dt.find_all('em', {'class': 'property'}):
-            em.string = '_{}_ '.format(em.text.strip())
-            em.unwrap()
+        for em in section.find_all('em'):
+            if em.string is not None:
+                em.string = '_{0}_ '.format(em.string.rstrip())
+                em.unwrap()
+        # Change css styled spans & divs for important notes to respective tags
+        for span in section.find_all('span'):
+            markdown_special(span)
+        for div in section.find_all('div'):
+            markdown_special(div)
         # < Hack > around BS because making it output simple strings is like 
         # getting your money back from asshole you misjudged a long time ago
         transform_header = []
         for content in section.dt.contents:
             transform_header.append(str(content))
         # Add horizontal rule below header
-        # Format header section, add opening link tag. 
+        # Format header section to markdown, add opening link tag. 
         tmp_header = '{0}[{1}'.format( markdown_header('h4'),
                 h.handle(''.join(transform_header).strip()),
                 )
@@ -265,7 +277,7 @@ def build_definitions(fullpath):
         newtmp = tmp_header.replace(".``", ".")
         # string is immutable
         header = '{0}{1}'.format(newtmp.replace('[¶', ''), '-----')
-        # log.info('Constructed %s', header)
+        log.info('Constructed header: \n%s', header)
         return header, url
 
 
@@ -277,13 +289,14 @@ def build_definitions(fullpath):
             if link is not None:
                 transform_link = transform_relative_links(link.attrs['href'])
                 link.attrs['href'] = transform_link
+                del link['title']
             else:
                 log.debug('Link? %s', link)
         transform_body =[]
         for content in section.dd.contents:
             transform_body.append(str(content))
         body = str(h.handle(''.join(transform_body))).strip()
-        # log.debug('Constructed body: %s', body)
+        log.debug('Constructed body: \n%s', body)
         return body
 
 
@@ -300,7 +313,7 @@ def build_definitions(fullpath):
         footer      = '-----\n`>>>` [README]({0}) | `>>>` ' \
                     '[Try get it from PM!]({1})'.format(readme_link, pm_link)
 
-        log.debug('Creating footer')
+        log.debug('Created footer')
         return footer
 
 
@@ -321,6 +334,7 @@ def build_definitions(fullpath):
                         version_id, keytype, keyclass, keyword)
             log.info('`%s` section done.\n', 
                         section.dt.find(class_='descname').string)
+
             ''' Store all the data
             Arguments:
                 Database columns:
@@ -338,6 +352,15 @@ def build_definitions(fullpath):
                 footer:         Related document URLs & docbot information 
                                 links
                 url:            Permalink to Python doc syntax definition 
+            # json structure 
+            json_data = {'meta': [{ 'version_id': version_id, 'major': major, 
+                                'micro': micro, 'minor': minor, }, 
+                                {'module': DOC_MODULE, 'keyclass': keyclass, 
+                                'keytype': keytype, }],  
+                        'keywords': keyword, 'url': url,
+                        'data': [ header, body, footer],
+                        }
+            json_builder(json_data)
             '''
             doc = Library(
                     version_id=version_id, major=major, 
@@ -362,7 +385,7 @@ session = Session()
 for root, dirs, filenames in os.walk(path):
     for fname in filenames:
         fullpath = os.path.join(root, fname)
-        log.info('Start importing definitions %s', fullpath , exc_info=True)
+        log.info('Start building definitions %s', fullpath , exc_info=True)
         build_definitions(fullpath)
 
 # build_definitions(path)
