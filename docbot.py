@@ -105,6 +105,7 @@ def check_replied(comment):
     comment_result = session.query(reddb.comment_id, reddb.replied).filter(
                                     reddb.comment_id == comment.id).first()
     if comment_result:
+        comment.save(category='comment_replied')
         log.debug('Replied: [%s] %s', comment_result[0], comment_result[1])
         return True
     else: return False
@@ -123,6 +124,11 @@ def check_mentions():
 def check_pm():
     """ Check Private Messages for queries """
     log.info('Checking PMs...')
+    me = r.user.me()
+    inbox = r.inbox
+    # log.debug('%s \n %s', dir(me.comments.validate_time_filter), dir(inbox.unread))
+    # todays_comment = me.comments.validate_time_filter(today)
+    log.debug(inbox.unread)
     # check_replied(pm)
     pass
 
@@ -131,7 +137,7 @@ def parse(query):
     """Get query definitions from libdb database"""
     # see docs/library/functions.html?highlight=filter#filter
     list_query = [*filter(None, re.split(non_syntax, query.strip()))]
-    log.debug('Start parsing: %s', list_query)
+    log.info('Start parsing: %s', list_query)
     _d = _definition = {'version': 'version_id', 'search': 'keyword', 
                         'module': 'module'}
     query_types = {
@@ -187,11 +193,12 @@ def parse(query):
     
     if main_check:
         # group by module hopefully = better search (motherbot:build_definitions)
+        log.info('Starting main_query')
         main_query = session.query(*columns).filter(
-                (libdb.keywords.contains(main_keyword)) & 
+                (libdb.keywords == main_keyword) & 
                 (libdb.version_id == main_ver)
                 ).group_by(libdb.module, libdb.id).order_by(libdb.id).first()
-        log.debug('Library returns (main_query): id: %s, vers: %s, keyword: %s', 
+        log.info('Library returns (main_query): id: %s, vers: %s, keyword: %s', 
                     main_query.id, main_query.version_id, main_query.keywords)
         return main_query, 'main'
     elif opt_check:
@@ -200,7 +207,7 @@ def parse(query):
         opt_query = session.query(*columns).filter(
                 (libdb.module == option) & (libdb.version_id == main_ver)
                 ).group_by(libdb.keywords, libdb.id).order_by(libdb.id).first()
-        log.debug('Library returns (opt_query): id: %s, vers: %s, module: %s',
+        log.info('Library returns (opt_query): id: %s, vers: %s, module: %s',
                     opt_query.id, opt_query.version_id, opt_query.module)
         return opt_query, 'option'
     else:
@@ -210,14 +217,13 @@ def parse(query):
 
 def format_response(data, comment):
     """Format bot reply to user query"""
-    permalink = 'https://www.reddit.com/r/{0}/comments/{1}/comment/{2}'.format(
-                sub_name, comment.link_id.split('_')[1], comment.id)
+    permalink = comment.permalink(fast=True)
     if data is None:
         # for `not found` reply
         msg_template = 'SyntaxBot --find {0} --version 3'.format('print')
         # stolen from RemindMeBot 
         pm_link = \
-        'https://np.reddit.com/message/compose/?to={0}&subject={1}&message={2}' \
+        'https://reddit.com/message/compose/?to={0}&subject={1}&message={2}' \
         ''.format('SyntaxBot', 'print', msg_template)
         readme_link = 'https://www.reddit.com/r/SyntaxBot/'        
         standard_footer = '-----\n`>>>` [README]({0}) | ' \
@@ -231,10 +237,15 @@ def format_response(data, comment):
     else:
         reply_data = data[0]
         reply_type = data[1]
-        botreply = """{0} \n {1} \n {2} \n {3} \n {4}""".format(
-                        reply_data.header, reply_data.body, reply_data.footer, 
-                        reply_type, permalink, )
-    
+        # query easy to find, confident we got the right definition
+        if reply_type == 'main':
+            botreply = """{0} \n {1} \n {2}""".format(
+                        reply_data.header, reply_data.body, reply_data.footer)
+        elif reply_type == 'option':
+            botreply = """I can't find the exact match of your resquest, here's
+                what I can find:  \n\n{0} \n {1} \n {2}""".format(
+                        reply_data.header, reply_data.body, reply_data.footer)
+
     return botreply
 
 
@@ -248,15 +259,16 @@ def reply(comment):
     #     return
     ##
     response_data = parse(valid_query(comment))
-    log.info('Replying...{}'.format( 
-            { comment.id: [ datetime.utcfromtimestamp(comment.created_utc), 
-            comment.author.name, response_data ] } ) )
+    log.info('Replying...{} \n{}'.format( {comment.id: 
+        [datetime.utcfromtimestamp(comment.created_utc), comment.author.name ]}, 
+        response_data ))
     # pass comment too for logging purpose
     bot_response = format_response(response_data, comment)
     log.debug('Reply message: %s', bot_response)
     # comment.reply(bot_response)
+    # comment.save(category='comment_replied')
     # mark_as_replied(comment)
-    pass
+    # pass
 
 
 def search(subreddit, keyword, limit):
@@ -296,9 +308,9 @@ def whatsub_doc(subreddit, keyword):
     """Main bot activities & limit rate requests to oauth.reddit.com"""
     log.info('Whatsub, doc?')
     limit = 100
-    search(subreddit, keyword, limit)
-    # check_pm()
+    check_pm()
     # check_mentions()
+    # search(subreddit, keyword, limit)
 
 
 def login():
