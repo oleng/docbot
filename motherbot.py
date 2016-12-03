@@ -8,6 +8,9 @@ git:
 CHANGES:    
 2016/12/02  Moved from SQLite3 to PostgreSQL, only version 3 data due to number 
             of columns limitation on free tier Heroku
+
+Acknowledgement:    Thanks to Alireza Savand for keeping html2text alive after 
+                    Aaron Swartz passed away.
 """
 import os
 import re
@@ -17,7 +20,7 @@ from datetime import date, datetime
 import copy as cp                       # to copy section
 from random import randrange
 from bs4 import BeautifulSoup as BS
-import html2text
+import html2text                        # MAKE SURE html2text BODY_WIDTH config
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from docdb import Library
@@ -267,7 +270,7 @@ def build_definitions(fullpath):
         # getting your money back from asshole you misjudged a long time ago
         transform_header = []
         for content in section.dt.contents:
-            transform_header.append(str(content))
+            transform_header.append(str(content).replace('\n', ''))
         # Add horizontal rule below header
         # Format header section to markdown, add opening link tag. 
         tmp_header = '{0}[{1}'.format( markdown_header('h4'),
@@ -375,8 +378,6 @@ def build_definitions(fullpath):
     # commit the record the database and close connection
     session.commit()
 
-'''
-'''
 db_config = os.getenv('DATABASE_URL')
 engine = create_engine(db_config, echo=True, isolation_level="READ COMMITTED")
 Session = sessionmaker(bind=engine)
