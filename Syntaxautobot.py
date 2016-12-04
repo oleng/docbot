@@ -33,9 +33,9 @@ passwd      = os.getenv('syntaxbot_password')
 db_config   = os.getenv('DATABASE_URL')
 # Reddit related variables
 baseurl     = 'docs.python.org'
-sub_name    = 'SyntaxBot'
+sub_name    = 'learnpython'
 
-# regex pattern for capturing user commands. Need to have everything 
+# regex pattern for capturing definition url. Need to have everything 
 # captured between the identifiers
 urlpattern = re.compile(r"""(?P<version>[32]/)(?P<topic>\w+/)
     (?P<page>[\w\.]+\.html)(?P<syntax>[\?#\w=\.]+)""", re.I | re.X)
@@ -59,8 +59,8 @@ def check_replied(comment):
 
 
 def contain_url(comment):
-    """Searching valid formatted command in comment, if found, strip non query 
-    parts in comment.body. Return False or full query string(s)"""
+    """Searching valid url in comment, if found, return the regex pattern match, 
+    if not return False"""
     # to find if submision or comment : stackoverflow.com/a/17431054/6882768
     if not hasattr(comment, 'body'):
         log.error('A submission. Searching selftext %s', comment.id)
@@ -162,11 +162,11 @@ def reply(comment):
     else:
         log.info('Nothing to reply for %s', comment.id)
 
-def scan(subreddit, limit):
+def scan(subreddit, sort, time, limit):
     ''' Search for the queries in the sub using reddit search, time filtered 
     '''
     search_result = r.subreddit(subreddit).search('{0}'.format(
-                    baseurl), time_filter='day')
+                    baseurl), sort=sort, time_filter=time, limit=limit)
     log.debug('Search result: {}'.format(search_result.__dict__))
     if search_result is None:
         log.info('No matching result.')
@@ -205,8 +205,10 @@ def scan(subreddit, limit):
 def whatsub_doc(subreddit):
     """Main bot activities & limit rate requests to oauth.reddit.com"""
     log.info('Whatsub, doc?')
+    sort = 'new'
+    time = 'week'
     limit = 100
-    scan(subreddit, limit)
+    scan(subreddit, sort, time, limit)
 
 
 def login():
@@ -224,7 +226,7 @@ def login():
 
 if __name__ == '__main__':
     log = logging.getLogger(__name__)
-    logging.config.dictConfig(ast.literal_eval(os.getenv('LOG_CFG')))
+    logging.config.dictConfig(ast.literal_eval(os.getenv('WHATSUPDOC_CFG')))
     engine = create_engine(db_config, echo=True)
     Session = sessionmaker(bind=engine)
     session = Session()
