@@ -9,7 +9,7 @@ click==6.6                # via pip-tools
 decorator==4.0.10         # via praw
 first==2.0.1              # via pip-tools
 html2text==2016.9.19
-lxml==3.6.4
+lxml>=4.6.2
 pip-tools==1.8.0
 praw==4.0.0b22
 prawcore==0.2.1           # via praw
@@ -17,5 +17,5 @@ psycopg2==2.6.2
 # requests==2.12.0          # via praw, prawcore, update-checker
 simplejson==3.10.0
 six==1.10                 # via pip-tools, praw
-sqlalchemy==1.1.4
+SQLAlchemy==1.3.0
 update-checker==0.15      # via praw
